@@ -93,13 +93,30 @@ Problems that affect every request stop the run and leave the request `Queued` f
 
 | Client | Settings | Calls |
 |---|---|---|
-| DevLake | `DevLake:BaseUrl`, `DevLake:TimeoutSeconds` | `GET is_valid`, `GET stats/{email}/{jira,github,ai_usage,ai_cost}?tf=` |
+| DevLake | `DevLake:BaseUrl` (ends in `/rest/`), `DevLake__ApiToken`, `DevLake:TimeoutSeconds` | `GET is_valid`, `GET stats/{email}/{jira,github,ai_usage,ai_cost}?tf=` |
 | Workstream | `Workstream:BaseUrl`, `Workstream:PageSize`, `Workstream:TimeoutSeconds` | `GET is_valid`, `GET projects?page=&pageSize=` until the last page |
 | Sophia | `ClientConfigs` and `ClientConfigOutboundUrls` rows; `Sophia:TimeoutSeconds` | OAuth2 token request, then the callback |
 
 Every client has a total timeout and retries transient failures (5xx, 408, 429 and network errors) with backoff. Sophia's callback is sent once with no HTTP retry, because the processing job records each attempt and retries up to `maxAttempts`. A client config's `authType` is `oauth2` (client credentials) or `api_token` (a static bearer token), and its secrets are stored encrypted with `Security:EncryptionKey`.
 
-The response shapes of DevLake's stats endpoints are defined with them in DEVLAKE-418, so for now the client returns their JSON as is. Workstream's API isn't documented yet. The client accepts each page either as a JSON array, which ends with a short page, or as `{ "results": [...], "next": ... }`, which ends when `next` is null.
+### DevLake endpoints
+
+DevLake serves these for the Integration Service (`backend/server/api/integration`). They are reached through `/rest/...`. There, DevLake checks `Authorization: Bearer <API key>` and the key's allowed path, so create a DevLake API key (Settings, then API keys) with the allowed path `^/(is_valid|stats/.+)$` and set it as `DevLake__ApiToken`. A direct call without `/rest` gets 401, even when DevLake's login is turned off.
+
+- **`GET is_valid`:** `true`. An invalid, expired or out-of-scope key gets 403 from DevLake, which the client reports as `false`.
+- **Every stats response** starts with `email` (lowercased), `timeFrame`, and `from` and `to` (RFC 3339 UTC, `[from, to)`). An email with no data gets zeros and empty lists. A bad email or `tf` gets 400, with a message naming the field.
+
+| Category | Fields after the common ones |
+|---|---|
+| `jira` | `issuesResolved`, `storyPointsResolved`, `issuesCreated`, and the current `issuesInProgress` and `issuesTodo` |
+| `github` | `commits`, `additions`, `deletions`, `pullRequestsOpened`, `pullRequestsMerged`, `pullRequestsWithCommits`, `reviews` |
+| `ai_usage` | `providers: [{ provider, activeDays, sessions, suggestions, acceptances, linesAdded, linesRemoved, commitsByAi, pullRequests }]`, `toolEditsAccepted`, `toolEditsRejected` |
+| `ai_cost` | `models: [{ provider, model, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, estimatedCostUsd }]`, `totalEstimatedCostUsd` (decimal strings in USD) |
+
+Some data limits apply:
+
+- **Jira:** Jira stats and GitHub pull request authorship and reviews match on the account's email, which many Jira and GitHub accounts hide. Commit counts and `pullRequestsWithCommits` use the commit author email, which is reliable.
+- **AI data:** it is daily, so AI windows cover whole UTC days. Workstream's API isn't documented yet. The client accepts each page either as a JSON array, which ends with a short page, or as `{ "results": [...], "next": ... }`, which ends when `next` is null.
 
 ## Request queue
 

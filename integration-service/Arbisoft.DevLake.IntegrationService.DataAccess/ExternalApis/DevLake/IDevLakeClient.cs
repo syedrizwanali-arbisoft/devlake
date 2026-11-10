@@ -31,8 +31,8 @@ public interface IDevLakeClient
     Task<bool> IsTokenValidAsync(string? correlationId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Calls GET /stats/{email}/{category}?tf=. The response shape is defined with DevLake's endpoints (DEVLAKE-418), so the
-    /// JSON is returned as is.
+    /// Calls GET /stats/{email}/{category}?tf=. Each category has its own response, documented in the README and in
+    /// DevLake's Swagger spec (framework/integration). The JSON is returned as is, so the callback carries every field.
     /// </summary>
     Task<JsonElement> GetStatsAsync(
         string email, DevLakeStatsCategory category, string timeFrame, string correlationId, CancellationToken cancellationToken = default);
