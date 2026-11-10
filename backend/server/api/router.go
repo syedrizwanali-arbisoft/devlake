@@ -44,6 +44,7 @@ import (
 	"github.com/apache/incubator-devlake/server/api/shared"
 	"github.com/apache/incubator-devlake/server/api/task"
 	userprojectmapping "github.com/apache/incubator-devlake/server/api/user_project_mapping"
+	"github.com/apache/incubator-devlake/server/api/workstream"
 	"github.com/apache/incubator-devlake/server/services"
 
 	"github.com/gin-gonic/gin"
@@ -113,6 +114,8 @@ func RegisterRouter(r *gin.Engine, basicRes context.BasicRes) {
 
 	// Integration Service endpoints, reachable only through /rest/... with a DevLake API key.
 	registerIntegrationRoutes(r, basicRes)
+	// project ingestion from Workstream, through the Integration Service
+	registerWorkstreamRoutes(r, basicRes, admin)
 
 	// mount all api resources for all plugins
 	resources, err := services.GetPluginsApiResources()
@@ -141,6 +144,38 @@ func registerIntegrationRoutes(r *gin.Engine, basicRes context.BasicRes) {
 	r.GET("/stats/:email/github", apiKeyOnly, handlers.GetGitHubStats)
 	r.GET("/stats/:email/ai_usage", apiKeyOnly, handlers.GetAIUsageStats)
 	r.GET("/stats/:email/ai_cost", apiKeyOnly, handlers.GetAICostStats)
+}
+
+// registerWorkstreamRoutes is the composition root for project ingestion. Without the Integration Service settings
+// the catalog can still be listed, and loading answers 503 with what to set.
+func registerWorkstreamRoutes(r *gin.Engine, basicRes context.BasicRes, admin gin.HandlerFunc) {
+	cfg, err := workstream.LoadConfig(basicRes.GetConfigReader())
+	if err != nil {
+		panic(err)
+	}
+	var fetcher *workstream.Client
+	if cfg != nil {
+		fetcher, err = workstream.NewClient(&http.Client{Timeout: cfg.Timeout}, *cfg)
+		if err != nil {
+			panic(err)
+		}
+	}
+	// A nil *Client passed as the interface would be a non-nil fetcher (a typed nil), so pass a literal nil instead.
+	var svc *workstream.Service
+	if fetcher != nil {
+		svc, err = workstream.NewService(fetcher, basicRes.GetDal())
+	} else {
+		svc, err = workstream.NewService(nil, basicRes.GetDal())
+	}
+	if err != nil {
+		panic(err)
+	}
+	handlers, err := workstream.NewHandlers(svc)
+	if err != nil {
+		panic(err)
+	}
+	r.POST("/projects/load", admin, handlers.LoadProjects)
+	r.GET("/workstream-projects", handlers.ListProjects)
 }
 
 func registerPluginEndpoints(r *gin.Engine, basicRes context.BasicRes, pluginName string, apiResources map[string]map[string]plugin.ApiResourceHandler) {

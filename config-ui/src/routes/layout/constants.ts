@@ -26,6 +26,7 @@ export const NAV_KEY = {
   BLUEPRINTS: 'blueprints',
   PIPELINES: 'pipelines',
   API_KEYS: 'api-keys',
+  PROJECT_INGESTION: 'project-ingestion',
   SETTINGS: 'settings',
   USERS: 'users',
   AUTHENTICATION: 'authentication',
@@ -41,7 +42,7 @@ export const NAV_KEY = {
 
 export const ACCESS_NAV_KEYS: string[] = [NAV_KEY.SETTINGS, NAV_KEY.USERS, NAV_KEY.AUTHENTICATION, NAV_KEY.ACTIVITY];
 
-export const ADMIN_NAV_KEYS: string[] = [NAV_KEY.API_KEYS];
+export const ADMIN_NAV_KEYS: string[] = [NAV_KEY.API_KEYS, NAV_KEY.PROJECT_INGESTION];
 
 export const COPYRIGHT_HIDDEN_NAV_KEYS: string[] = [NAV_KEY.DASHBOARDS, NAV_KEY.GITHUB, NAV_KEY.SLACK];
 
@@ -80,6 +81,7 @@ export const COPY = {
     blueprints: 'Blueprints',
     pipelines: 'Pipelines',
     apiKeys: 'API Keys',
+    projectIngestion: 'Project Ingestion',
     settings: 'Settings',
     users: 'User Management',
     authentication: 'Authentication',

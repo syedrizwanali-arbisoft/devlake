@@ -18,6 +18,7 @@
 
 import {
   ApiOutlined,
+  CloudDownloadOutlined,
   BarChartOutlined,
   BookOutlined,
   BuildOutlined,
@@ -57,6 +58,14 @@ export const getNavItems = (visibility: NavVisibility): NavItem[] => {
       label: COPY.nav.projects,
       icon: createElement(ProjectOutlined),
       path: PATHS.PROJECTS(),
+    },
+    {
+      kind: NAV_ITEM_KIND.ROUTE,
+      key: NAV_KEY.PROJECT_INGESTION,
+      label: COPY.nav.projectIngestion,
+      icon: createElement(CloudDownloadOutlined),
+      path: PATHS.PROJECT_INGESTION(),
+      visible: visible(NAV_KEY.PROJECT_INGESTION),
     },
     {
       kind: NAV_ITEM_KIND.ROUTE,

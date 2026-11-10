@@ -75,6 +75,13 @@ The same client sending the same emails and time frame within `Requests:Duplicat
 
 `GET /fetch/projects` needs a token with the `projects:fetch` scope. It checks Workstream's token, reads every page of Workstream's `/projects`, and returns `{ count, projects: [{ id, name, team_lead: { name, email }, source }] }`. If the token check fails or any page fails, it returns 502 with an `error` and `workstream_token_rejected`, never a partial list.
 
+DevLake calls this from its **Project Ingestion** screen (admins only), through `POST /projects/load`. To set it up:
+
+1. In the admin portal, create a client for DevLake with the `projects:fetch` scope, and issue it a secret.
+2. Set `INTEGRATION_SERVICE_URL`, `INTEGRATION_SERVICE_CLIENT_ID` and `INTEGRATION_SERVICE_CLIENT_SECRET` in DevLake's `.env`.
+
+DevLake saves each project and its team lead in `workstream_projects`, keyed by Workstream ID, so loading again updates rather than duplicates. It links each project to the DevLake project with the same name and never creates DevLake projects.
+
 Workstream's API isn't documented yet, so the mapping tries common field names. The ID comes from `id`, `project_id` or `projectId`, and the name from `name`, `title` or `project_name`. The team lead comes from an object (`team_lead`, `teamLead` or `lead`, with `name` or `full_name` and `email`) or from flat fields (`team_lead_name`, `team_lead_email`). `source` holds the original item, so nothing is lost.
 
 ## Processing job

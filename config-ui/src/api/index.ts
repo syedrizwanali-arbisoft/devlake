@@ -33,6 +33,7 @@ import * as scope from './scope';
 import * as scopeConfig from './scope-config';
 import * as store from './store';
 import * as task from './task';
+import * as workstream from './workstream';
 
 const migrate = () => request('/proceed-db-migration');
 const ping = () => request('/ping');
@@ -54,6 +55,7 @@ const API = {
   scopeConfig,
   store,
   task,
+  workstream,
   migrate,
   ping,
   version,
