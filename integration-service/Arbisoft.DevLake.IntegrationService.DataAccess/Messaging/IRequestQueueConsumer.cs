@@ -20,7 +20,8 @@ public sealed record QueuedRequest(string CorrelationId, string Json, DateTimeOf
 /// <param name="Processed">Messages whose handler succeeded and which were acknowledged.</param>
 /// <param name="Requeued">Messages that failed for the first time and stay queued for the next run.</param>
 /// <param name="DeadLettered">Messages that failed again on redelivery and moved to the failed queue.</param>
-public sealed record ConsumeResult(int Processed, int Requeued, int DeadLettered);
+/// <param name="Halted">The handler stopped the run with a <see cref="QueueProcessingHaltedException"/>.</param>
+public sealed record ConsumeResult(int Processed, int Requeued, int DeadLettered, bool Halted = false);
 
 public interface IRequestQueueConsumer
 {

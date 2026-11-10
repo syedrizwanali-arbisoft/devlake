@@ -140,6 +140,35 @@ public class RequestQueueConsumerTests
     }
 
     [Fact]
+    public async Task Consume_StopsAndLeavesTheMessageQueuedWhenTheHandlerHalts()
+    {
+        Enqueue(1, "a");
+        Enqueue(2, "halts");
+        Enqueue(3, "never-reached");
+
+        var result = await _consumer.ConsumeAsync((request, _) => request.CorrelationId == "halts"
+            ? throw new QueueProcessingHaltedException("token rejected")
+            : Task.CompletedTask, 10);
+
+        Assert.Equal(new ConsumeResult(1, 0, 0, Halted: true), result);
+        await _channel.Received(1).BasicAckAsync(1, false, Arg.Any<CancellationToken>());
+        await _channel.DidNotReceive().BasicAckAsync(2, Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        await _channel.DidNotReceiveWithAnyArgs().BasicNackAsync(default, default, default, default);
+        Assert.Single(_queue);
+    }
+
+    [Fact]
+    public async Task Consume_DoesNotDeadLetterARedeliveredMessageThatHalts()
+    {
+        Enqueue(1, "a", redelivered: true);
+
+        var result = await _consumer.ConsumeAsync((_, _) => throw new QueueProcessingHaltedException("down"), 10);
+
+        Assert.True(result.Halted);
+        await _channel.DidNotReceiveWithAnyArgs().BasicNackAsync(default, default, default, default);
+    }
+
+    [Fact]
     public async Task Consume_ReturnsNothingForAnEmptyQueue()
     {
         Assert.Equal(new ConsumeResult(0, 0, 0), await _consumer.ConsumeAsync((_, _) => Task.CompletedTask, 10));

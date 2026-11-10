@@ -50,12 +50,15 @@ public static class DependencyInjection
         services.AddSingleton<IRequestLogRepository, RequestLogRepository>();
         services.AddSingleton<IClientConfigRepository, ClientConfigRepository>();
 
-        // Settings are checked when messaging is first used, so a process that never queues doesn't need them.
+        // RabbitMQ settings are checked when messaging is first used, so a process that never queues doesn't need them.
         services.TryAddSingleton(TimeProvider.System);
         services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.SectionName));
         services.AddSingleton<IConnectionFactory>(provider =>
             RabbitMqConnection.CreateFactory(provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value));
-        services.AddSingleton<IRabbitMqConnection, RabbitMqConnection>();
+        services.AddSingleton<IRabbitMqConnection>(provider => new RabbitMqConnection(
+            provider.GetRequiredService<IConnectionFactory>,
+            provider.GetRequiredService<IOptions<RabbitMqOptions>>(),
+            provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<RabbitMqConnection>>()));
         services.AddSingleton<IRequestQueuePublisher, RequestQueuePublisher>();
         services.AddSingleton<IRequestQueueConsumer, RequestQueueConsumer>();
 

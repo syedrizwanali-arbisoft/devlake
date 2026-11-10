@@ -30,6 +30,7 @@ public sealed class RequestQueueConsumer(IRabbitMqConnection connection, ILogger
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxMessages);
 
         int processed = 0, requeued = 0, deadLettered = 0;
+        var halted = false;
 
         // Messages left unacknowledged go back to the queue when this channel closes, including after a crash or
         // cancellation. Holding them until then means a failed message isn't fetched again within the same run.
@@ -58,6 +59,13 @@ public sealed class RequestQueueConsumer(IRabbitMqConnection connection, ILogger
             {
                 throw;
             }
+            catch (QueueProcessingHaltedException ex)
+            {
+                // The message stays unacknowledged, so it goes back to the queue when the channel closes.
+                logger.LogWarning(ex, "Processing stopped at request {CorrelationId}; it stays queued.", request.CorrelationId);
+                halted = true;
+                break;
+            }
             catch (Exception ex)
             {
                 if (message.Redelivered)
@@ -79,6 +87,6 @@ public sealed class RequestQueueConsumer(IRabbitMqConnection connection, ILogger
             processed++;
         }
 
-        return new ConsumeResult(processed, requeued, deadLettered);
+        return new ConsumeResult(processed, requeued, deadLettered, halted);
     }
 }

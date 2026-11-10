@@ -52,6 +52,9 @@ public sealed class ApiTestHost : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
         {
             host.UseSetting("Database:RunMigrationsOnStartup", "false");
+
+            // The job would call the DevLake configured in appsettings.json. It has its own tests.
+            host.UseSetting("Processing:Enabled", "false");
             host.UseSetting("Secrets:key-1", FirstKey.PrivatePem);
             host.UseSetting("Secrets:key-2", SecondKey.PrivatePem);
             foreach (var (key, value) in settings ?? new Dictionary<string, string?>())

@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.API.Authorization;
+using Arbisoft.DevLake.IntegrationService.API.BackgroundJobs;
 using Arbisoft.DevLake.IntegrationService.API.RateLimiting;
 using Arbisoft.DevLake.IntegrationService.Business;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,7 @@ builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
 });
 builder.Services.AddApiSecurity();
 builder.Services.AddApiRateLimiting(builder.Configuration);
+builder.Services.AddHostedService<RequestProcessingJob>();
 
 var app = builder.Build();
 

@@ -24,11 +24,16 @@ namespace Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 /// broker restart, is replaced the next time a channel is needed. Nothing consumes continuously, so lazy reconnection
 /// is enough, and it never leaves a half-recovered channel behind.
 /// </summary>
+/// <remarks>
+/// The factory is created on first use, so a process starts without RabbitMQ settings and reports them missing only when
+/// it actually queues or consumes.
+/// </remarks>
 public sealed class RabbitMqConnection(
-    IConnectionFactory connectionFactory,
+    Func<IConnectionFactory> connectionFactory,
     IOptions<RabbitMqOptions> options,
     ILogger<RabbitMqConnection> logger) : IRabbitMqConnection, IAsyncDisposable
 {
+    private readonly Lazy<IConnectionFactory> _connectionFactory = new(connectionFactory);
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IConnection? _connection;
 
@@ -104,7 +109,7 @@ public sealed class RabbitMqConnection(
                 _connection = null;
             }
 
-            _connection = await connectionFactory.CreateConnectionAsync(cancellationToken);
+            _connection = await _connectionFactory.Value.CreateConnectionAsync(cancellationToken);
             return _connection;
         }
         finally

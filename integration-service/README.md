@@ -52,6 +52,18 @@ All three need a token with the `stats:read` scope. The stats APIs answer straig
 
 The same client sending the same emails and time frame within `Requests:DuplicateWindowSeconds` (300) gets the original `correlation_id`, and nothing new is queued. Revoked requests don't count as duplicates.
 
+## Processing job
+
+The API runs `RequestProcessingJob` at startup and every `Processing:IntervalSeconds` (60); the Web app has it off. Each run checks the DevLake token, then takes up to `Processing:MaxMessagesPerRun` requests from the queue. For each request it:
+
+1. checks the callback again, and marks the request `Revoked - no callback URL` if it's gone,
+2. checks the client's token,
+3. sets `Processing` and fetches Jira, GitHub, AI usage and AI cost stats in parallel for the engineer's Arbisoft email and every mapped email (at most `Processing:MaxParallelDevLakeCalls` at once),
+4. sets `Processed`, posts `{ correlation_id, time_frame, engineers: [...] }` to the callback up to `maxAttempts` times (waiting `DeliveryRetryDelaySeconds` × attempt between tries) and records each attempt,
+5. sets `Success`, or `Failed` once every attempt fails.
+
+Problems that affect every request stop the run and leave the request `Queued` for the next run: a rejected token, or DevLake down (5xx, 408, 429 or no response). A problem with only one request, such as a 4xx from DevLake or an incomplete client config, marks that request `Failed`, and the run carries on.
+
 ## Outbound clients
 
 | Client | Settings | Calls |

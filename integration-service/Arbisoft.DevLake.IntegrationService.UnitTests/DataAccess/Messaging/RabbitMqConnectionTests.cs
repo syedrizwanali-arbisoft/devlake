@@ -34,7 +34,7 @@ public class RabbitMqConnectionTests
 
     public RabbitMqConnectionTests()
     {
-        _connection = new RabbitMqConnection(_factory, Options.Create(Settings), NullLogger<RabbitMqConnection>.Instance);
+        _connection = new RabbitMqConnection(() => _factory, Options.Create(Settings), NullLogger<RabbitMqConnection>.Instance);
     }
 
     private static IConnection OpenConnection(IChannel channel)
@@ -74,6 +74,16 @@ public class RabbitMqConnectionTests
 
         var exception = Assert.Throws<InvalidOperationException>(() => RabbitMqConnection.CreateFactory(settings));
         Assert.Contains(expected, exception.Message);
+    }
+
+    [Fact]
+    public void Construction_DoesNotCreateTheFactory()
+    {
+        var created = false;
+
+        _ = new RabbitMqConnection(() => { created = true; return _factory; }, Options.Create(Settings), NullLogger<RabbitMqConnection>.Instance);
+
+        Assert.False(created);
     }
 
     [Fact]
