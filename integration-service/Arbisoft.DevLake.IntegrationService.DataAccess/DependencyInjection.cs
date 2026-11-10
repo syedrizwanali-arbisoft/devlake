@@ -13,10 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Persistence;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using RabbitMQ.Client;
 
 namespace Arbisoft.DevLake.IntegrationService.DataAccess;
 
@@ -40,6 +44,15 @@ public static class DependencyInjection
         services.AddSingleton<IAccessTokenRepository, AccessTokenRepository>();
         services.AddSingleton<IRequestLogRepository, RequestLogRepository>();
         services.AddSingleton<IClientConfigRepository, ClientConfigRepository>();
+
+        // Settings are checked when messaging is first used, so a process that never queues doesn't need them.
+        services.TryAddSingleton(TimeProvider.System);
+        services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.SectionName));
+        services.AddSingleton<IConnectionFactory>(provider =>
+            RabbitMqConnection.CreateFactory(provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value));
+        services.AddSingleton<IRabbitMqConnection, RabbitMqConnection>();
+        services.AddSingleton<IRequestQueuePublisher, RequestQueuePublisher>();
+        services.AddSingleton<IRequestQueueConsumer, RequestQueueConsumer>();
         return services;
     }
 }

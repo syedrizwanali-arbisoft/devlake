@@ -14,22 +14,14 @@
 // limitations under the License.
 
 using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Arbisoft.DevLake.IntegrationService.API.Authorization;
 using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
-using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
-using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers.Builders;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using NSubstitute;
@@ -49,91 +41,36 @@ public sealed class ProtectedTestController : ControllerBase
     public IActionResult Projects() => Ok();
 }
 
-/// <summary>Runs the real API pipeline, with only the repositories replaced, from token issue through to a protected call.</summary>
+/// <summary>From token issue through to a protected call, on the real pipeline.</summary>
 public sealed class ApiSecurityPipelineTests : IDisposable
 {
-    private const string ClientSecretValue = "the-client-secret";
+    private readonly ApiTestHost _host = new();
 
-    private readonly IClientRepository _clients = Substitute.For<IClientRepository>();
-    private readonly IScopeRepository _scopes = Substitute.For<IScopeRepository>();
-    private readonly IAccessTokenRepository _accessTokens = Substitute.For<IAccessTokenRepository>();
-    private readonly ISigningKeyRepository _signingKeys = Substitute.For<ISigningKeyRepository>();
-    private readonly Dictionary<string, AccessToken> _savedTokens = [];
-    private readonly TestKey _firstKey = TestKey.Create(1, "key-1", DateTime.UtcNow.AddDays(-30));
-    private readonly TestKey _secondKey = TestKey.Create(2, "key-2", DateTime.UtcNow.AddDays(-1));
-    private readonly WebApplicationFactory<Program> _factory;
-    private readonly HttpClient _http;
-
-    public ApiSecurityPipelineTests()
-    {
-        var clientSecret = new ClientSecret { Id = 10, Secret = new SecretHasher().Hash(ClientSecretValue) };
-        _clients.GetByClientIdAsync("sophia", Arg.Any<CancellationToken>()).Returns(new ClientBuilder().Build());
-        _clients.GetUsableSecretsAsync(1, Arg.Any<DateTime>(), Arg.Any<CancellationToken>()).Returns([clientSecret]);
-        _scopes.GetNamesForClientAsync(1, Arg.Any<CancellationToken>()).Returns(["stats:read"]);
-        _signingKeys.GetActiveAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>()).Returns(_firstKey.Row);
-        _signingKeys.GetAllAsync(Arg.Any<CancellationToken>()).Returns([_firstKey.Row]);
-        _accessTokens.AddAsync(Arg.Do<AccessToken>(t => _savedTokens[t.Jti] = t), Arg.Any<CancellationToken>()).Returns(1L);
-        _accessTokens.GetByJtiAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(call => _savedTokens.GetValueOrDefault(call.Arg<string>()));
-
-        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
-        {
-            host.UseSetting("Database:RunMigrationsOnStartup", "false");
-            host.UseSetting("Secrets:key-1", _firstKey.PrivatePem);
-            host.UseSetting("Secrets:key-2", _secondKey.PrivatePem);
-            host.ConfigureTestServices(services =>
-            {
-                services.Replace(ServiceDescriptor.Singleton(_clients));
-                services.Replace(ServiceDescriptor.Singleton(_scopes));
-                services.Replace(ServiceDescriptor.Singleton(_accessTokens));
-                services.Replace(ServiceDescriptor.Singleton(_signingKeys));
-                services.AddControllers().AddApplicationPart(typeof(ProtectedTestController).Assembly);
-            });
-        });
-        _http = _factory.CreateClient();
-    }
-
-    public void Dispose()
-    {
-        _http.Dispose();
-        _factory.Dispose();
-    }
-
-    private async Task<HttpResponseMessage> PostTokenAsync(string credentials, string body = "grant_type=client_credentials")
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/auth/token/")
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded"),
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue(
-            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials)));
-        return await _http.SendAsync(request);
-    }
-
-    private async Task<string> GetTokenAsync()
-    {
-        using var response = await PostTokenAsync("sophia:" + ClientSecretValue);
-        response.EnsureSuccessStatusCode();
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return json.RootElement.GetProperty("access_token").GetString()!;
-    }
+    public void Dispose() => _host.Dispose();
 
     private async Task<HttpStatusCode> CallAsync(string path, string? token)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, path);
-        if (token is not null)
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        }
-
-        using var response = await _http.SendAsync(request);
+        using var response = await _host.SendAsync(HttpMethod.Get, path, token);
         return response.StatusCode;
+    }
+
+    private string SignDirectly(string issuer, string audience, DateTime issuedOn, DateTime expiresOn)
+    {
+        var jti = Guid.NewGuid().ToString();
+        _host.SavedTokens[jti] = new AccessToken { Jti = jti };
+
+        using var rsa = RSA.Create();
+        rsa.ImportFromPem(_host.FirstKey.PrivatePem);
+        var credentials = new SigningCredentials(
+            new RsaSecurityKey(rsa.ExportParameters(true)) { KeyId = _host.FirstKey.Kid }, SecurityAlgorithms.RsaSha256);
+        var generator = new JwtTokenGenerator(Options.Create(new JwtOptions { Issuer = issuer, Audience = audience }));
+        return generator.Generate(new TokenClaims(jti, "sophia", ["stats:read"], issuedOn, expiresOn), credentials);
     }
 
     [Fact]
     public async Task TokenEndpoint_ReturnsTheContractFields()
     {
-        using var response = await PostTokenAsync("sophia:" + ClientSecretValue);
+        using var response = await _host.PostTokenAsync("sophia:" + ApiTestHost.ClientSecretValue);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
@@ -147,7 +84,7 @@ public sealed class ApiSecurityPipelineTests : IDisposable
     [Fact]
     public async Task TokenEndpoint_RejectsAWrongSecretWith401()
     {
-        using var response = await PostTokenAsync("sophia:wrong");
+        using var response = await _host.PostTokenAsync("sophia:wrong");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -155,7 +92,7 @@ public sealed class ApiSecurityPipelineTests : IDisposable
     [Fact]
     public async Task TokenEndpoint_RejectsAnUnsupportedGrantWith400()
     {
-        using var response = await PostTokenAsync("sophia:" + ClientSecretValue, "grant_type=password");
+        using var response = await _host.PostTokenAsync("sophia:" + ApiTestHost.ClientSecretValue, "grant_type=password");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -163,13 +100,13 @@ public sealed class ApiSecurityPipelineTests : IDisposable
     [Fact]
     public async Task ProtectedApi_AllowsATokenWithTheScope()
     {
-        Assert.Equal(HttpStatusCode.OK, await CallAsync("/test/stats", await GetTokenAsync()));
+        Assert.Equal(HttpStatusCode.OK, await CallAsync("/test/stats", await _host.GetTokenAsync()));
     }
 
     [Fact]
     public async Task ProtectedApi_Returns403WhenTheScopeIsMissing()
     {
-        Assert.Equal(HttpStatusCode.Forbidden, await CallAsync("/test/projects", await GetTokenAsync()));
+        Assert.Equal(HttpStatusCode.Forbidden, await CallAsync("/test/projects", await _host.GetTokenAsync()));
     }
 
     [Fact]
@@ -181,7 +118,7 @@ public sealed class ApiSecurityPipelineTests : IDisposable
     [Fact]
     public async Task ProtectedApi_Returns401ForATamperedToken()
     {
-        var token = await GetTokenAsync();
+        var token = await _host.GetTokenAsync();
 
         Assert.Equal(HttpStatusCode.Unauthorized, await CallAsync("/test/stats", token[..^4] + "AAAA"));
     }
@@ -189,10 +126,10 @@ public sealed class ApiSecurityPipelineTests : IDisposable
     [Fact]
     public async Task ProtectedApi_Returns401OnceTheTokenIsRevoked()
     {
-        var token = await GetTokenAsync();
+        var token = await _host.GetTokenAsync();
         Assert.Equal(HttpStatusCode.OK, await CallAsync("/test/stats", token));
 
-        foreach (var saved in _savedTokens.Values)
+        foreach (var saved in _host.SavedTokens.Values)
         {
             saved.RevokedOn = DateTime.UtcNow;
         }
@@ -203,23 +140,10 @@ public sealed class ApiSecurityPipelineTests : IDisposable
     [Fact]
     public async Task ProtectedApi_Returns401ForATokenThatWasNeverRecorded()
     {
-        var token = await GetTokenAsync();
-        _savedTokens.Clear();
+        var token = await _host.GetTokenAsync();
+        _host.SavedTokens.Clear();
 
         Assert.Equal(HttpStatusCode.Unauthorized, await CallAsync("/test/stats", token));
-    }
-
-    private string SignDirectly(string issuer, string audience, DateTime issuedOn, DateTime expiresOn)
-    {
-        var jti = Guid.NewGuid().ToString();
-        _savedTokens[jti] = new AccessToken { Jti = jti };
-
-        using var rsa = System.Security.Cryptography.RSA.Create();
-        rsa.ImportFromPem(_firstKey.PrivatePem);
-        var parameters = rsa.ExportParameters(true);
-        var credentials = new SigningCredentials(new RsaSecurityKey(parameters) { KeyId = _firstKey.Kid }, SecurityAlgorithms.RsaSha256);
-        var generator = new JwtTokenGenerator(Options.Create(new JwtOptions { Issuer = issuer, Audience = audience }));
-        return generator.Generate(new TokenClaims(jti, "sophia", ["stats:read"], issuedOn, expiresOn), credentials);
     }
 
     [Fact]
@@ -239,14 +163,14 @@ public sealed class ApiSecurityPipelineTests : IDisposable
     [Fact]
     public async Task KeyRotation_KeepsOlderTokensValidAndPicksUpTheNewKey()
     {
-        var tokenFromFirstKey = await GetTokenAsync();
+        var tokenFromFirstKey = await _host.GetTokenAsync();
         Assert.Equal(HttpStatusCode.OK, await CallAsync("/test/stats", tokenFromFirstKey));
 
-        _firstKey.Row.RetiredOn = DateTime.UtcNow;
-        _signingKeys.GetActiveAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>()).Returns(_secondKey.Row);
-        _signingKeys.GetAllAsync(Arg.Any<CancellationToken>()).Returns([_secondKey.Row, _firstKey.Row]);
+        _host.FirstKey.Row.RetiredOn = DateTime.UtcNow;
+        _host.SigningKeys.GetActiveAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>()).Returns(_host.SecondKey.Row);
+        _host.SigningKeys.GetAllAsync(Arg.Any<CancellationToken>()).Returns([_host.SecondKey.Row, _host.FirstKey.Row]);
 
-        var tokenFromSecondKey = await GetTokenAsync();
+        var tokenFromSecondKey = await _host.GetTokenAsync();
         Assert.Equal(HttpStatusCode.OK, await CallAsync("/test/stats", tokenFromFirstKey));
 
         // The cached key set doesn't hold key-2 yet. The first call asks for a refresh, and the next one succeeds.

@@ -14,18 +14,27 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.API.Authorization;
+using Arbisoft.DevLake.IntegrationService.API.RateLimiting;
 using Arbisoft.DevLake.IntegrationService.Business;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddBusiness(builder.Configuration);
-builder.Services.AddControllers();
+builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
+{
+    // Keep the error shape of the Sophia contract when a body can't be read, instead of ProblemDetails.
+    options.InvalidModelStateResponseFactory = _ => new BadRequestObjectResult(
+        new { status = "400", correlation_id = string.Empty, error = "The request body is not valid." });
+});
 builder.Services.AddApiSecurity();
+builder.Services.AddApiRateLimiting(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapControllers();
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 

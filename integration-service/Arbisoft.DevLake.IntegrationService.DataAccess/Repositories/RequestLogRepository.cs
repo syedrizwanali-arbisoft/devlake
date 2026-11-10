@@ -28,8 +28,8 @@ public sealed class RequestLogRepository(IDbConnectionFactory connectionFactory)
 
         var id = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             """
-            INSERT INTO RequestLogs (clientRefId, correlationId, url, status, eventType, createdOn)
-            VALUES (@ClientRefId, @CorrelationId, @Url, @Status, @EventType, @CreatedOn);
+            INSERT INTO RequestLogs (clientRefId, correlationId, url, status, eventType, requestHash, createdOn)
+            VALUES (@ClientRefId, @CorrelationId, @Url, @Status, @EventType, @RequestHash, @CreatedOn);
             SELECT LAST_INSERT_ID();
             """, log, transaction, cancellationToken: cancellationToken));
         await connection.ExecuteAsync(new CommandDefinition(
@@ -38,6 +38,19 @@ public sealed class RequestLogRepository(IDbConnectionFactory connectionFactory)
 
         await transaction.CommitAsync(cancellationToken);
         return id;
+    }
+
+    public async Task<RequestLog?> FindRecentDuplicateAsync(long clientRefId, string requestHash, DateTime since, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        return await connection.QueryFirstOrDefaultAsync<RequestLog>(new CommandDefinition(
+            """
+            SELECT * FROM RequestLogs
+            WHERE clientRefId = @clientRefId AND requestHash = @requestHash AND createdOn >= @since AND status <> @revoked
+            ORDER BY createdOn DESC
+            LIMIT 1
+            """, new { clientRefId, requestHash, since, revoked = RequestLogStatus.RevokedNoCallbackUrl },
+            cancellationToken: cancellationToken));
     }
 
     public async Task<RequestLog?> GetByCorrelationIdAsync(string correlationId, CancellationToken cancellationToken = default)

@@ -15,6 +15,7 @@
 
 using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 using Arbisoft.DevLake.IntegrationService.DataAccess;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,6 +39,11 @@ public static class DependencyInjection
         services.AddSingleton<ISigningKeyProvider, SigningKeyProvider>();
         services.AddSingleton<ITokenGenerator, JwtTokenGenerator>();
         services.AddSingleton<IAuthService, AuthService>();
+
+        services.Configure<RequestOptions>(configuration.GetSection(RequestOptions.SectionName));
+        services.AddSingleton<IIdempotencyCheck, IdempotencyCheck>();
+        services.AddSingleton<IRequestService, RequestService>();
+        services.AddSingleton<IRequestHandler, RequestHandler>();
         return services;
     }
 }

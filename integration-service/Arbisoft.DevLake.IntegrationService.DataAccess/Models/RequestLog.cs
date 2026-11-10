@@ -24,6 +24,9 @@ public sealed class RequestLog
     public string Url { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string EventType { get; set; } = string.Empty;
+
+    /// <summary>Identifies identical requests for the idempotency check. Null for requests that skip it.</summary>
+    public string? RequestHash { get; set; }
     public DateTime CreatedOn { get; set; }
 }
 

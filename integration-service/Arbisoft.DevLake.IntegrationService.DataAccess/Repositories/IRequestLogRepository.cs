@@ -21,6 +21,11 @@ public interface IRequestLogRepository
 {
     /// <summary>Saves the log and its JSON body in one transaction.</summary>
     Task<long> AddAsync(RequestLog log, string json, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Returns the newest request from the client with the same hash created at or after <paramref name="since"/>,
+    /// ignoring revoked requests, which the client may send again.
+    /// </summary>
+    Task<RequestLog?> FindRecentDuplicateAsync(long clientRefId, string requestHash, DateTime since, CancellationToken cancellationToken = default);
     Task<RequestLog?> GetByCorrelationIdAsync(string correlationId, CancellationToken cancellationToken = default);
     Task<string?> GetJsonAsync(long requestLogId, CancellationToken cancellationToken = default);
     Task<bool> UpdateStatusAsync(long id, string status, CancellationToken cancellationToken = default);
