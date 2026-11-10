@@ -46,8 +46,9 @@ The API applies pending migrations at startup. A failed script stops startup.
 |---|---|
 | `GET /api/v1/engineers/{email}/stats?tf=24h` | `RateLimits:StatsPerMinute` (100) |
 | `POST /api/v1/engineers/stats/batch` | `RateLimits:BatchStatsPerMinute` (20) |
+| `GET /api/v1/requests/poll/{uuid}` | `RateLimits:PollPerMinute` (100) |
 
-Both need a token with the `stats:read` scope, and both answer straight away with a `correlation_id`. A request is queued only if the client has an active `ClientConfigOutboundUrls` row for its event type: `engineer-stats` for the single API and `engineer-stats-batch` for the batch API. Without one, the request is logged as `Revoked - no callback URL` and gets a 422.
+All three need a token with the `stats:read` scope. The stats APIs answer straight away with a `correlation_id`, and the poll API returns that request's current status: `Queued`, `Processing`, `Success`, `Failure` or `Revoked`. A client can only poll its own requests; for anyone else's, the poll API returns 404. A request is queued only if the client has an active `ClientConfigOutboundUrls` row for its event type: `engineer-stats` for the single API and `engineer-stats-batch` for the batch API. Without one, the request is logged as `Revoked - no callback URL` and gets a 422.
 
 The same client sending the same emails and time frame within `Requests:DuplicateWindowSeconds` (300) gets the original `correlation_id`, and nothing new is queued. Revoked requests don't count as duplicates.
 

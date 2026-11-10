@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddSingleton<IIdempotencyCheck, IdempotencyCheck>();
         services.AddSingleton<IRequestService, RequestService>();
         services.AddSingleton<IRequestHandler, RequestHandler>();
+        services.AddSingleton<IRequestStatusService, RequestStatusService>();
         return services;
     }
 }
