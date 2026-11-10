@@ -88,7 +88,15 @@ public sealed class WorkstreamClient(HttpClient http, IOptions<WorkstreamOptions
         throw new ExternalApiException(System, $"/projects page {page} is neither an array nor an object with a results array.");
     }
 
-    private string Token() => !string.IsNullOrWhiteSpace(options.Value.ApiToken)
-        ? options.Value.ApiToken
-        : throw new ExternalApiAuthenticationException(System, "Workstream:ApiToken is not set. Set the Workstream__ApiToken environment variable.");
+    private string Token()
+    {
+        if (http.BaseAddress is null)
+        {
+            throw new ExternalApiException(System, "Workstream:BaseUrl is not set to an absolute URL.");
+        }
+
+        return !string.IsNullOrWhiteSpace(options.Value.ApiToken)
+            ? options.Value.ApiToken
+            : throw new ExternalApiAuthenticationException(System, "Workstream:ApiToken is not set. Set the Workstream__ApiToken environment variable.");
+    }
 }

@@ -71,6 +71,12 @@ All three need a token with the `stats:read` scope. The stats APIs answer straig
 
 The same client sending the same emails and time frame within `Requests:DuplicateWindowSeconds` (300) gets the original `correlation_id`, and nothing new is queued. Revoked requests don't count as duplicates.
 
+## Workstream projects API
+
+`GET /fetch/projects` needs a token with the `projects:fetch` scope. It checks Workstream's token, reads every page of Workstream's `/projects`, and returns `{ count, projects: [{ id, name, team_lead: { name, email }, source }] }`. If the token check fails or any page fails, it returns 502 with an `error` and `workstream_token_rejected`, never a partial list.
+
+Workstream's API isn't documented yet, so the mapping tries common field names. The ID comes from `id`, `project_id` or `projectId`, and the name from `name`, `title` or `project_name`. The team lead comes from an object (`team_lead`, `teamLead` or `lead`, with `name` or `full_name` and `email`) or from flat fields (`team_lead_name`, `team_lead_email`). `source` holds the original item, so nothing is lost.
+
 ## Processing job
 
 The API runs `RequestProcessingJob` at startup and every `Processing:IntervalSeconds` (60); the Web app has it off. Each run checks the DevLake token, then takes up to `Processing:MaxMessagesPerRun` requests from the queue. For each request it:

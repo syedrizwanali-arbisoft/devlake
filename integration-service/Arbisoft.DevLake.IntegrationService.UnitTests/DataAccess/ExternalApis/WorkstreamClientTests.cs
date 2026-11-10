@@ -105,6 +105,16 @@ public class WorkstreamClientTests
     }
 
     [Fact]
+    public async Task Calls_ExplainAMissingBaseUrl()
+    {
+        var client = new WorkstreamClient(new HttpClient(_handler), Options.Create(_options), NullLogger<WorkstreamClient>.Instance);
+
+        var exception = await Assert.ThrowsAsync<ExternalApiException>(() => client.IsTokenValidAsync());
+        Assert.Contains("Workstream:BaseUrl", exception.Message);
+        Assert.Empty(_handler.Requests);
+    }
+
+    [Fact]
     public async Task Calls_ExplainAMissingToken()
     {
         _options.ApiToken = " ";

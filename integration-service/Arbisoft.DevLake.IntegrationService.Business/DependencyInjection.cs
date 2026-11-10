@@ -16,6 +16,7 @@
 using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Admin;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Projects;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 using Arbisoft.DevLake.IntegrationService.DataAccess;
 using Microsoft.Extensions.Configuration;
@@ -48,6 +49,8 @@ public static class DependencyInjection
         services.AddSingleton<IEmailMappingService, EmailMappingService>();
         services.AddSingleton<IClientConfigService, ClientConfigService>();
         services.AddSingleton<IRequestLogService, RequestLogService>();
+
+        services.AddSingleton<IErpIntegrationService, ErpIntegrationService>();
 
         services.Configure<RequestOptions>(configuration.GetSection(RequestOptions.SectionName));
         services.AddSingleton<IIdempotencyCheck, IdempotencyCheck>();

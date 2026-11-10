@@ -82,9 +82,16 @@ public static class DependencyInjection
             .Configure((resilience, provider) => SetTotalTimeout(
                 resilience, provider.GetRequiredService<IOptions<DevLakeOptions>>().Value.TimeoutSeconds));
 
+        // Without a valid base URL the client still resolves, and each call reports the missing setting, so the
+        // projects API can answer with a clear error instead of failing while it is being created.
         services.AddHttpClient<IWorkstreamClient, WorkstreamClient>((provider, http) =>
-                http.BaseAddress = ExternalApiCalls.NormalizeBaseUrl(
-                    provider.GetRequiredService<IOptions<WorkstreamOptions>>().Value.BaseUrl, "Workstream:BaseUrl"))
+            {
+                var baseUrl = provider.GetRequiredService<IOptions<WorkstreamOptions>>().Value.BaseUrl;
+                if (Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+                {
+                    http.BaseAddress = ExternalApiCalls.NormalizeBaseUrl(baseUrl, "Workstream:BaseUrl");
+                }
+            })
             .AddStandardResilienceHandler()
             .Configure((resilience, provider) => SetTotalTimeout(
                 resilience, provider.GetRequiredService<IOptions<WorkstreamOptions>>().Value.TimeoutSeconds));

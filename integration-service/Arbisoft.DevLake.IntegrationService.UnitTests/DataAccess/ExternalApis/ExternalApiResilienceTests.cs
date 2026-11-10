@@ -112,6 +112,19 @@ public sealed class ExternalApiResilienceTests : IDisposable
     }
 
     [Fact]
+    public async Task WorkstreamResolvesWithoutABaseUrlAndReportsItOnUse()
+    {
+        using var provider = new ServiceCollection().AddLogging()
+            .AddDataAccess(new ConfigurationBuilder().Build())
+            .BuildServiceProvider();
+
+        var client = provider.GetRequiredService<Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis.Workstream.IWorkstreamClient>();
+
+        var exception = await Assert.ThrowsAsync<ExternalApiException>(() => client.GetAllProjectsAsync());
+        Assert.Contains("Workstream:BaseUrl", exception.Message);
+    }
+
+    [Fact]
     public void ResolvingAClientWithoutABaseUrlExplainsTheSetting()
     {
         using var provider = new ServiceCollection().AddLogging()

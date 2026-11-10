@@ -17,6 +17,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis.Workstream;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
@@ -71,6 +72,7 @@ public sealed class ApiTestHost : IDisposable
                 services.Replace(ServiceDescriptor.Singleton(RequestLogs));
                 services.Replace(ServiceDescriptor.Singleton(ClientConfigs));
                 services.Replace(ServiceDescriptor.Singleton(Publisher));
+                services.Replace(ServiceDescriptor.Transient(_ => Workstream));
                 services.AddControllers().AddApplicationPart(typeof(ApiTestHost).Assembly);
             });
         });
@@ -84,6 +86,7 @@ public sealed class ApiTestHost : IDisposable
     public IRequestLogRepository RequestLogs { get; } = Substitute.For<IRequestLogRepository>();
     public IClientConfigRepository ClientConfigs { get; } = Substitute.For<IClientConfigRepository>();
     public IRequestQueuePublisher Publisher { get; } = Substitute.For<IRequestQueuePublisher>();
+    public IWorkstreamClient Workstream { get; } = Substitute.For<IWorkstreamClient>();
     public Dictionary<string, AccessToken> SavedTokens { get; } = [];
     public TestKey FirstKey { get; } = TestKey.Create(1, "key-1", DateTime.UtcNow.AddDays(-30));
     public TestKey SecondKey { get; } = TestKey.Create(2, "key-2", DateTime.UtcNow.AddDays(-1));
