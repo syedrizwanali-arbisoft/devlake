@@ -1,0 +1,38 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page "{jti}"
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.AccessTokens.RevokeModel
+@{
+    ViewData["Title"] = "Revoke token";
+}
+<h1>Revoke token</h1>
+@if (Model.Token is { } token)
+{
+    <div class="panel">
+      <dl>
+        <dt>Client</dt><dd>@token.ClientName <span class="mono muted">@token.ClientId</span></dd>
+        <dt>Token ID</dt><dd class="mono long">@token.Jti</dd>
+        <dt>Scopes</dt><dd class="mono">@token.GrantedScopes</dd>
+        <dt>Expires</dt><dd>@AdminPageModel.Utc(token.ExpiresOn)</dd>
+      </dl>
+    </div>
+}
+<form method="post" class="stack panel" style="margin-top:16px">
+  <label>Reason <input type="text" asp-for="Reason" maxlength="900" required></label>
+  <p class="muted">The API rejects the token on its next use. The client can still get a new token while it has a valid secret.</p>
+  <div class="actions"><button class="danger" type="submit">Revoke token</button><a asp-page="Index">Cancel</a></div>
+</form>

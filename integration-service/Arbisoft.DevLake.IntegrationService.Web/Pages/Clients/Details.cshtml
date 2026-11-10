@@ -1,0 +1,78 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page "{id:long}"
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.Clients.DetailsModel
+@{
+    var c = Model.Details!.Client;
+    ViewData["Title"] = c.Name;
+}
+<h1>@c.Name</h1>
+<div class="actions">
+  <a class="button secondary" asp-page="Edit" asp-route-id="@c.Id">Edit</a>
+  <a class="button" asp-page="Secrets/Create" asp-route-id="@c.Id">New secret</a>
+</div>
+<div class="panel">
+  <dl>
+    <dt>Client ID</dt><dd class="mono">@c.ClientId</dd>
+    <dt>Status</dt><dd><span class="badge @(c.IsActive ? "Active" : "Inactive")">@(c.IsActive ? "Active" : "Inactive")</span></dd>
+    <dt>Token lifetime</dt><dd>@c.AccessTokenLifetimeSeconds seconds</dd>
+    <dt>Created</dt><dd>@AdminPageModel.Utc(c.CreatedOn) by @c.CreatedBy</dd>
+    <dt>Modified</dt><dd>@(c.ModifiedOn is null ? "—" : $"{AdminPageModel.Utc(c.ModifiedOn)} by {c.ModifiedBy}")</dd>
+  </dl>
+</div>
+
+<h2>Scopes</h2>
+<form method="post" asp-page-handler="Scopes" class="panel">
+  @if (Model.Details.AllScopes.Count == 0)
+  {
+      <p class="muted">No scopes exist yet. <a asp-page="/Scopes/Create">Create one</a>.</p>
+  }
+  @foreach (var scope in Model.Details.AllScopes)
+  {
+      <label class="check">
+        <input type="checkbox" name="ScopeIds" value="@scope.Id" @(Model.Details.AssignedScopes.Any(s => s.Id == scope.Id) ? "checked" : "")>
+        <span class="mono">@scope.Name</span> <span class="muted">@scope.Description</span>
+      </label>
+  }
+  <div class="actions"><button type="submit">Save scopes</button><span class="muted">New tokens carry the saved scopes.</span></div>
+</form>
+
+<h2>Secrets</h2>
+<p class="muted">A client can hold more than one secret, so a new one can be shared through Passbolt before the old one is revoked.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>ID</th><th>Status</th><th>Expires</th><th>Last used</th><th>Created</th><th></th></tr></thead>
+  <tbody>
+  @foreach (var secret in Model.Details.Secrets)
+  {
+      <tr>
+        <td>@secret.Id</td>
+        <td><span class="badge @secret.Status">@secret.Status</span></td>
+        <td>@AdminPageModel.Utc(secret.ExpiresOn)</td>
+        <td>@AdminPageModel.Utc(secret.LastUsedOn)</td>
+        <td>@AdminPageModel.Utc(secret.CreatedOn) <span class="muted">by @secret.CreatedBy</span></td>
+        <td>@if (secret.RevokedOn is null) { <a asp-page="Secrets/Revoke" asp-route-id="@c.Id" asp-route-secretId="@secret.Id">Revoke</a> }
+            else { <span class="muted">Revoked @AdminPageModel.Utc(secret.RevokedOn)</span> }</td>
+      </tr>
+  }
+  @if (Model.Details.Secrets.Count == 0)
+  {
+      <tr><td colspan="6" class="muted">No secrets yet. The client can't get tokens until it has one.</td></tr>
+  }
+  </tbody>
+</table>
+</div>

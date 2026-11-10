@@ -1,0 +1,40 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.SigningKeys.IndexModel
+@{
+    ViewData["Title"] = "Signing keys";
+}
+<h1>Signing keys</h1>
+<p class="muted">The active key signs new tokens. Retired keys still verify the tokens they signed until those expire.</p>
+<div class="actions"><a class="button" asp-page="Rotate">Rotate key</a></div>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Key ID (kid)</th><th>Status</th><th>Algorithm</th><th>Activated</th><th>Retired</th><th>Private key reference</th></tr></thead>
+  <tbody>
+  @foreach (var key in Model.Keys)
+  {
+      <tr><td class="mono">@key.Kid</td><td><span class="badge @key.Status">@key.Status</span></td><td>@key.Algorithm</td>
+          <td>@AdminPageModel.Utc(key.ActivatedOn)</td><td>@AdminPageModel.Utc(key.RetiredOn)</td><td class="mono long">@key.PrivateKeyRef</td></tr>
+  }
+  @if (Model.Keys.Count == 0)
+  {
+      <tr><td colspan="6" class="muted">No signing keys yet. The Auth API can't issue tokens until one exists. Rotate to create the first.</td></tr>
+  }
+  </tbody>
+</table>
+</div>

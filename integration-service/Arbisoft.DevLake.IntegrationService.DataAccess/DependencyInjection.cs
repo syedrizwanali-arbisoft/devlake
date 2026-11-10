@@ -49,6 +49,7 @@ public static class DependencyInjection
         services.AddSingleton<IAccessTokenRepository, AccessTokenRepository>();
         services.AddSingleton<IRequestLogRepository, RequestLogRepository>();
         services.AddSingleton<IClientConfigRepository, ClientConfigRepository>();
+        services.AddSingleton<ISecretStoreRepository, SecretStoreRepository>();
 
         // RabbitMQ settings are checked when messaging is first used, so a process that never queues doesn't need them.
         services.TryAddSingleton(TimeProvider.System);

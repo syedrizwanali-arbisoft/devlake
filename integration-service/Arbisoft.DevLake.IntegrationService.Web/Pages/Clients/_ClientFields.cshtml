@@ -1,0 +1,24 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.Clients.ClientForm
+<label>Name <input type="text" name="Form.Name" value="@Model.Name" maxlength="255" required></label>
+<label>Access token lifetime (seconds)
+  <input type="number" name="Form.AccessTokenLifetimeSeconds" value="@Model.AccessTokenLifetimeSeconds" min="60" max="86400" required>
+</label>
+<label class="check"><input type="checkbox" name="Form.IsActive" value="true" @(Model.IsActive ? "checked" : "")> Active (can get tokens)</label>
+@* An unticked checkbox sends nothing, so this hidden value makes "unticked" arrive as false. The first value wins. *@
+<input type="hidden" name="Form.IsActive" value="false">

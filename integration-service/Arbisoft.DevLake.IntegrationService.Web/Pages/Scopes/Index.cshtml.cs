@@ -13,12 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Microsoft.Extensions.Configuration;
+using Arbisoft.DevLake.IntegrationService.Business.Dtos.Admin;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Admin;
 
-namespace Arbisoft.DevLake.IntegrationService.Business.Security;
+namespace Arbisoft.DevLake.IntegrationService.Web.Pages.Scopes;
 
-/// <summary>Resolves a reference to the "Secrets:{reference}" setting, normally the Secrets__{reference} environment variable.</summary>
-public sealed class ConfigurationSecretStore(IConfiguration configuration) : ISecretStore
+public sealed class IndexModel(IScopeService scopes) : AdminPageModel
 {
-    public string? GetSecret(string reference) => configuration[$"Secrets:{reference}"];
+    public IReadOnlyList<ScopeDto> Scopes { get; private set; } = [];
+
+    public async Task OnGetAsync(CancellationToken cancellationToken) => Scopes = await scopes.ListAsync(cancellationToken);
 }

@@ -26,6 +26,8 @@ limitations under the License.
     <ProjectReference Include="../Arbisoft.DevLake.IntegrationService.API/Arbisoft.DevLake.IntegrationService.API.csproj" />
     <ProjectReference Include="../Arbisoft.DevLake.IntegrationService.Business/Arbisoft.DevLake.IntegrationService.Business.csproj" />
     <ProjectReference Include="../Arbisoft.DevLake.IntegrationService.DataAccess/Arbisoft.DevLake.IntegrationService.DataAccess.csproj" />
+    <!-- Aliased: .NET 10 makes the Web app's top-level Program public, which would clash with the API's. -->
+    <ProjectReference Include="../Arbisoft.DevLake.IntegrationService.Web/Arbisoft.DevLake.IntegrationService.Web.csproj" Aliases="web" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />

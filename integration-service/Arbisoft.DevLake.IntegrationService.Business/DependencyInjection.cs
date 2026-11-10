@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Admin;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 using Arbisoft.DevLake.IntegrationService.DataAccess;
@@ -35,10 +36,15 @@ public static class DependencyInjection
 
         services.AddSingleton<ISecretEncryptor, SecretEncryptor>();
         services.AddSingleton<ISecretHasher, SecretHasher>();
-        services.AddSingleton<ISecretStore, ConfigurationSecretStore>();
+        services.AddSingleton<ISecretStore, SecretStore>();
         services.AddSingleton<ISigningKeyProvider, SigningKeyProvider>();
         services.AddSingleton<ITokenGenerator, JwtTokenGenerator>();
         services.AddSingleton<IAuthService, AuthService>();
+
+        services.AddSingleton<IClientService, ClientService>();
+        services.AddSingleton<IScopeService, ScopeService>();
+        services.AddSingleton<ISigningKeyService, SigningKeyService>();
+        services.AddSingleton<IAccessTokenService, AccessTokenService>();
 
         services.Configure<RequestOptions>(configuration.GetSection(RequestOptions.SectionName));
         services.AddSingleton<IIdempotencyCheck, IdempotencyCheck>();

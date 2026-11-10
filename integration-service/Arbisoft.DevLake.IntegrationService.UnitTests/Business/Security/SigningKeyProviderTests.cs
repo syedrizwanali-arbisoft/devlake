@@ -40,7 +40,7 @@ public class SigningKeyProviderTests
     {
         var key = TestKey.Create(7, "key-1", Now.AddDays(-1));
         _repository.GetActiveAsync(Now, Arg.Any<CancellationToken>()).Returns(key.Row);
-        _secretStore.GetSecret(key.Row.PrivateKeyRef).Returns(key.PrivatePem);
+        _secretStore.GetSecretAsync(key.Row.PrivateKeyRef, Arg.Any<CancellationToken>()).Returns(key.PrivatePem);
 
         var active = await _provider.GetActiveAsync();
 
@@ -89,6 +89,6 @@ public class SigningKeyProviderTests
         var keys = await _provider.GetVerificationKeysAsync();
 
         Assert.Equal(["new", "old"], keys.Select(k => k.KeyId));
-        _secretStore.DidNotReceiveWithAnyArgs().GetSecret(default!);
+        await _secretStore.DidNotReceiveWithAnyArgs().GetSecretAsync(default!, default);
     }
 }

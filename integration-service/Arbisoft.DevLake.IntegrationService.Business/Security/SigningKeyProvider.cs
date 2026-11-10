@@ -32,7 +32,7 @@ public sealed class SigningKeyProvider(
             ?? throw new InvalidOperationException("There is no active signing key.");
         EnsureSupported(key);
 
-        var privateKeyPem = secretStore.GetSecret(key.PrivateKeyRef);
+        var privateKeyPem = await secretStore.GetSecretAsync(key.PrivateKeyRef, cancellationToken);
         if (string.IsNullOrWhiteSpace(privateKeyPem))
         {
             throw new InvalidOperationException(

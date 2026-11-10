@@ -40,6 +40,18 @@ dotnet run --project Arbisoft.DevLake.IntegrationService.API
 
 The API applies pending migrations at startup. A failed script stops startup.
 
+## Admin portal
+
+`Arbisoft.DevLake.IntegrationService.Web` is the admin portal. One admin account is set through `Admin__Username` and `Admin__PasswordHash`, and every page needs that sign-in. The portal manages:
+
+- **Clients:** create, edit, activate or deactivate, and set the token lifetime.
+- **Secrets:** issue a new secret, shown once, then revoke the old one. Share it through Passbolt.
+- **Scopes:** create them and assign them to clients.
+- **Signing keys:** rotate. A new RSA key's private key is stored encrypted with `Security:EncryptionKey`, so the Web app and the API need the same encryption key. The previous key is retired, but the tokens it signed keep verifying until they expire.
+- **Access tokens:** list them and revoke one with a reason.
+
+Changes record the admin as `createdBy` or `modifiedBy`. A revoked token records the admin in its reason.
+
 ## Stats APIs
 
 | API | Rate limit per client |
@@ -91,7 +103,8 @@ Secrets come from environment variables, never from `appsettings.json`.
 | `RabbitMq__Username`, `RabbitMq__Password` | RabbitMQ credentials, the same values as `RABBITMQ_USER` and `RABBITMQ_PASSWORD` in `.env` |
 | `DevLake__ApiToken` | DevLake's API token, sent as `Authorization: Bearer` |
 | `Workstream__ApiToken` | Workstream's API token |
-| `Secrets__<privateKeyRef>` | PEM private key of the signing key whose `privateKeyRef` is `<privateKeyRef>` |
+| `Secrets__<privateKeyRef>` | Optional. A signing private key as PEM. Keys rotated in the admin portal are stored encrypted in `SecretStoreEntries` instead; the environment variable wins when both exist |
+| `Admin__Username`, `Admin__PasswordHash` | The admin portal's sign-in. Create the hash with `echo '<password>' \| dotnet run --project Arbisoft.DevLake.IntegrationService.Web -- hash-password` |
 
 ## Test
 

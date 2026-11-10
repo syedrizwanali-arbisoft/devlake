@@ -15,8 +15,12 @@
 
 namespace Arbisoft.DevLake.IntegrationService.Business.Security;
 
-/// <summary>Reads secrets that must stay out of the database, such as signing private keys.</summary>
+/// <summary>Holds secrets that must stay out of the main tables, such as signing private keys.</summary>
 public interface ISecretStore
 {
-    string? GetSecret(string reference);
+    /// <summary>Returns the secret, or null if the reference is unknown.</summary>
+    Task<string?> GetSecretAsync(string reference, CancellationToken cancellationToken = default);
+
+    /// <summary>Saves a new secret under a reference that hasn't been used before.</summary>
+    Task SaveSecretAsync(string reference, string value, string createdBy, CancellationToken cancellationToken = default);
 }
