@@ -1,0 +1,75 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.RequestLogs.IndexModel
+@{
+    ViewData["Title"] = "Request logs";
+}
+<h1>Request logs</h1>
+<form method="get" class="filters">
+  <label>Client
+    <select name="ClientId">
+      <option value="">All clients</option>
+      @foreach (var client in Model.Clients) { <option value="@client.Id" selected="@(client.Id == Model.ClientId)">@client.Name</option> }
+    </select>
+  </label>
+  <label>Status
+    <select name="Status">
+      <option value="">All statuses</option>
+      @foreach (var status in Model.Statuses) { <option value="@status" selected="@(status == Model.Status)">@status</option> }
+    </select>
+  </label>
+  <label>From (UTC) <input type="date" name="From" value="@Model.From?.ToString("yyyy-MM-dd")"></label>
+  <label>To (UTC) <input type="date" name="To" value="@Model.To?.ToString("yyyy-MM-dd")"></label>
+  <button class="secondary" type="submit">Filter</button>
+  <a asp-page="Index">Clear</a>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Received</th><th>Client</th><th>Event type</th><th>Status</th><th>Correlation ID</th><th>URL</th></tr></thead>
+  <tbody>
+  @foreach (var log in Model.Results.Logs)
+  {
+      <tr>
+        <td><a asp-page="Details" asp-route-id="@log.Id">@AdminPageModel.Utc(log.CreatedOn)</a></td>
+        <td>@log.ClientName</td>
+        <td class="mono">@log.EventType</td>
+        <td><span class="badge @AdminLabels.StatusClass(log.Status)">@log.Status</span></td>
+        <td class="mono long">@log.CorrelationId</td>
+        <td class="mono long">@log.Url</td>
+      </tr>
+  }
+  @if (Model.Results.Logs.Count == 0)
+  {
+      <tr><td colspan="6" class="muted">No requests match.</td></tr>
+  }
+  </tbody>
+</table>
+</div>
+<div class="pager">
+  <span class="muted">@Model.Results.Total request(s), page @Model.Results.Page of @Model.Results.PageCount</span>
+  @if (Model.Results.Page > 1)
+  {
+      <a asp-page="Index" asp-route-ClientId="@Model.ClientId" asp-route-Status="@Model.Status" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")"
+         asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-PageNumber="@(Model.Results.Page - 1)">Previous</a>
+  }
+  @if (Model.Results.Page < Model.Results.PageCount)
+  {
+      <a asp-page="Index" asp-route-ClientId="@Model.ClientId" asp-route-Status="@Model.Status" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")"
+         asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-PageNumber="@(Model.Results.Page + 1)">Next</a>
+  }
+</div>

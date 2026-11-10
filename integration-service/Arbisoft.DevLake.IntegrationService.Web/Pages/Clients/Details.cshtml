@@ -35,6 +35,27 @@ limitations under the License.
   </dl>
 </div>
 
+<h2>Outbound config</h2>
+<div class="panel">
+  @if (Model.Config is { } config)
+  {
+      <dl>
+        <dt>Auth</dt><dd>@AdminLabels.AuthType(config.AuthType)</dd>
+        <dt>Base URL</dt><dd class="mono">@config.BaseUrl</dd>
+        <dt>Status</dt><dd><span class="badge @(config.IsActive ? "Active" : "Inactive")">@(config.IsActive ? "Active" : "Inactive")</span></dd>
+        <dt>Callbacks</dt><dd>@Model.OutboundUrlCount configured</dd>
+      </dl>
+  }
+  else
+  {
+      <p class="muted">No outbound config. Results can't be delivered to this client, so its stats requests are revoked.</p>
+  }
+  <div class="actions">
+    <a class="button secondary" asp-page="/ClientConfigs/Edit" asp-route-clientId="@c.Id">@(Model.Config is null ? "Set up" : "Edit") outbound config</a>
+    @if (Model.Config is not null) { <a class="button secondary" asp-page="/ClientConfigs/OutboundUrls/Index" asp-route-clientId="@c.Id">Callback URLs</a> }
+  </div>
+</div>
+
 <h2>Scopes</h2>
 <form method="post" asp-page-handler="Scopes" class="panel">
   @if (Model.Details.AllScopes.Count == 0)

@@ -26,6 +26,12 @@ public interface IRequestLogRepository
     /// ignoring revoked requests, which the client may send again.
     /// </summary>
     Task<RequestLog?> FindRecentDuplicateAsync(long clientRefId, string requestHash, DateTime since, CancellationToken cancellationToken = default);
+    Task<RequestLog?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns one page of logs, newest first, and the number of logs that match. Null filters match everything.</summary>
+    Task<(IReadOnlyList<RequestLog> Logs, int Total)> SearchAsync(
+        long? clientRefId, string? status, DateTime? from, DateTime? to, int limit, int offset, CancellationToken cancellationToken = default);
+
     Task<RequestLog?> GetByCorrelationIdAsync(string correlationId, CancellationToken cancellationToken = default);
     Task<string?> GetJsonAsync(long requestLogId, CancellationToken cancellationToken = default);
     Task<bool> UpdateStatusAsync(long id, string status, CancellationToken cancellationToken = default);

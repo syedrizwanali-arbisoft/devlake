@@ -40,6 +40,9 @@ public sealed partial class AdminPortalTests : IDisposable
     private readonly IScopeService _scopes = Substitute.For<IScopeService>();
     private readonly ISigningKeyService _signingKeys = Substitute.For<ISigningKeyService>();
     private readonly IAccessTokenService _accessTokens = Substitute.For<IAccessTokenService>();
+    private readonly IEmailMappingService _emailMappings = Substitute.For<IEmailMappingService>();
+    private readonly IClientConfigService _clientConfigs = Substitute.For<IClientConfigService>();
+    private readonly IRequestLogService _requestLogs = Substitute.For<IRequestLogService>();
     private readonly WebApplicationFactory<WebAssemblyMarker> _factory;
     private readonly HttpClient _http;
 
@@ -58,6 +61,9 @@ public sealed partial class AdminPortalTests : IDisposable
                 services.Replace(ServiceDescriptor.Singleton(_scopes));
                 services.Replace(ServiceDescriptor.Singleton(_signingKeys));
                 services.Replace(ServiceDescriptor.Singleton(_accessTokens));
+                services.Replace(ServiceDescriptor.Singleton(_emailMappings));
+                services.Replace(ServiceDescriptor.Singleton(_clientConfigs));
+                services.Replace(ServiceDescriptor.Singleton(_requestLogs));
             });
         });
         _http = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -96,6 +102,11 @@ public sealed partial class AdminPortalTests : IDisposable
     [InlineData("/Scopes")]
     [InlineData("/SigningKeys")]
     [InlineData("/AccessTokens")]
+    [InlineData("/EmailMappings")]
+    [InlineData("/RequestLogs")]
+    [InlineData("/RequestLogs/Details/1")]
+    [InlineData("/ClientConfigs/Edit/1")]
+    [InlineData("/ClientConfigs/1/OutboundUrls")]
     public async Task EveryPageRequiresSignIn(string path)
     {
         using var response = await _http.GetAsync(path);
@@ -230,6 +241,84 @@ public sealed partial class AdminPortalTests : IDisposable
         using var response = await PostFormAsync("/SigningKeys/Rotate");
         Assert.Equal("/SigningKeys", response.Headers.Location!.OriginalString);
         await _signingKeys.Received(1).RotateAsync("admin", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateEmailMapping_ShowsTheServiceError()
+    {
+        _emailMappings.CreateAsync("abc@gmail.com", "x@gmail.com", Arg.Any<CancellationToken>())
+            .Returns(AdminResult<long>.Fail("The Arbisoft email must be a valid @arbisoft.com address."));
+        await SignInAsync();
+
+        using var response = await PostFormAsync("/EmailMappings/Create", ("ArbisoftEmail", "abc@gmail.com"), ("Email", "x@gmail.com"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("must be a valid @arbisoft.com address", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task ClientConfig_PostsTheFormAndNeverEchoesTheSecret()
+    {
+        _clientConfigs.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientConfigDto(
+            5, 1, "oauth2", "https://sophia.test/", "/oauth2/token/", "devlake", true, null, false, null, DateTime.UtcNow, 3, true,
+            DateTime.UtcNow, "admin", null, null));
+        _clientConfigs.SaveAsync(default, default!, default!).ReturnsForAnyArgs(AdminResult.Ok);
+        await SignInAsync();
+
+        var page = await _http.GetStringAsync("/ClientConfigs/Edit/1");
+        Assert.Contains("A secret is stored, encrypted. Leave this blank to keep it.", WebUtility.HtmlDecode(page));
+
+        using var response = await PostFormAsync("/ClientConfigs/Edit/1",
+            ("Form.AuthType", "oauth2"), ("Form.BaseUrl", "https://sophia.test/"), ("Form.TokenUrl", "/oauth2/token/"),
+            ("Form.OutboundClientId", "devlake"), ("Form.OutboundClientSecret", ""), ("Form.MaxAttempts", "4"),
+            ("Form.TokenExpiresOn", "2027-01-31"), ("Form.IsActive", "false"));
+
+        Assert.Equal("/Clients/Details/1", response.Headers.Location!.OriginalString);
+        await _clientConfigs.Received(1).SaveAsync(1, Arg.Is<ClientConfigInput>(i => i.AuthType == "oauth2" && i.MaxAttempts == 4 && !i.IsActive
+            && string.IsNullOrEmpty(i.OutboundClientSecret) && i.TokenExpiresOn == new DateTime(2027, 1, 31)), "admin", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OutboundUrl_CreateRecordsTheAdmin()
+    {
+        _clientConfigs.AddOutboundUrlAsync(default, default!, default!).ReturnsForAnyArgs(AdminResult<long>.Ok(9));
+        await SignInAsync();
+
+        using var response = await PostFormAsync("/ClientConfigs/1/OutboundUrls/Create",
+            ("Form.EventType", "engineer-stats"), ("Form.Method", "POST"), ("Form.Path", "/cb"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+
+        Assert.Equal("/ClientConfigs/1/OutboundUrls", response.Headers.Location!.OriginalString);
+        await _clientConfigs.Received(1).AddOutboundUrlAsync(1, new OutboundUrlInput("engineer-stats", "POST", "/cb", true), "admin", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RequestLogs_PassTheFiltersToTheService()
+    {
+        _requestLogs.SearchAsync(default!).ReturnsForAnyArgs(new RequestLogPage([], 0, 1, 50));
+        await SignInAsync();
+
+        using var response = await _http.GetAsync("/RequestLogs?ClientId=1&Status=Failed&From=2026-11-01&To=2026-11-10&PageNumber=2");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await _requestLogs.Received(1).SearchAsync(
+            new RequestLogFilter(1, "Failed", new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 10), 2), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RequestLogDetails_ShowsTheBodyAndAttemptsAsEscapedText()
+    {
+        _requestLogs.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new RequestLogDetailsDto(
+            new RequestLogDto(1, "corr-1", 1, "sophia", "Sophia", "/api/v1/engineers/a@arbisoft.com/stats?tf=1d", "Failed", "engineer-stats", DateTime.UtcNow),
+            "{\"emails\":[\"a@arbisoft.com\"]}",
+            [new RequestAttemptDto(1, "Failed", "Callback returned 502 BadGateway.", "<script>alert(1)</script>", "host/RequestProcessingJob", DateTime.UtcNow)]));
+        await SignInAsync();
+
+        var html = await _http.GetStringAsync("/RequestLogs/Details/1");
+
+        Assert.Contains("&quot;emails&quot;", html);
+        Assert.Contains("Callback returned 502 BadGateway.", html);
+        Assert.DoesNotContain("<script>alert(1)</script>", html);
+        Assert.Contains("&lt;script&gt;", html);
     }
 
     [Fact]

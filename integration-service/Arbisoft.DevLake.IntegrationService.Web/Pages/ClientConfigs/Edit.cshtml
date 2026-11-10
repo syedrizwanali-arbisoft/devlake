@@ -1,0 +1,77 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page "/ClientConfigs/Edit/{clientId:long}"
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.ClientConfigs.EditModel
+@{
+    ViewData["Title"] = "Outbound config";
+}
+<h1>Outbound config for @Model.ClientName</h1>
+<p class="muted">How the service authenticates when it delivers results to this client.</p>
+@if (Model.Existing is { } existing)
+{
+    <div class="panel" style="margin-bottom:16px">
+      <dl>
+        <dt>Credential rotated</dt><dd>@AdminPageModel.Utc(existing.TokenRotatedOn)</dd>
+        <dt>Credential expires</dt><dd>@AdminPageModel.Utc(existing.TokenExpiresOn)</dd>
+        <dt>Created</dt><dd>@AdminPageModel.Utc(existing.CreatedOn) by @existing.CreatedBy</dd>
+        <dt>Modified</dt><dd>@(existing.ModifiedOn is null ? "—" : $"{AdminPageModel.Utc(existing.ModifiedOn)} by {existing.ModifiedBy}")</dd>
+      </dl>
+    </div>
+}
+<form method="post" class="stack panel">
+  <label>Auth type
+    <select name="Form.AuthType" id="auth-type">
+      @foreach (var type in Model.AuthTypes)
+      {
+          <option value="@type" selected="@(type == Model.Form.AuthType)">@AdminLabels.AuthType(type)</option>
+      }
+    </select>
+  </label>
+  <label>Base URL <input type="text" name="Form.BaseUrl" value="@Model.Form.BaseUrl" placeholder="https://sophia.example.com/" required></label>
+
+  <fieldset data-auth="oauth2">
+    <legend>OAuth2 client credentials</legend>
+    <label>Token URL <input type="text" name="Form.TokenUrl" value="@Model.Form.TokenUrl" placeholder="/oauth2/token/">
+      <span class="muted">Absolute, or relative to the base URL.</span></label>
+    <label>Outbound client ID <input type="text" name="Form.OutboundClientId" value="@Model.Form.OutboundClientId"></label>
+    <label>Outbound client secret <input type="password" name="Form.OutboundClientSecret" autocomplete="new-password">
+      <span class="muted">@(Model.Existing?.HasOutboundClientSecret == true ? "A secret is stored, encrypted. Leave this blank to keep it." : "Required. It is stored encrypted and never shown again.")</span></label>
+    <label>Scope <input type="text" name="Form.OutboundScope" value="@Model.Form.OutboundScope" placeholder="Optional"></label>
+  </fieldset>
+
+  <fieldset data-auth="api_token">
+    <legend>Static API token</legend>
+    <label>API token <input type="password" name="Form.ApiToken" autocomplete="new-password">
+      <span class="muted">@(Model.Existing?.HasApiToken == true ? "A token is stored, encrypted. Leave this blank to keep it." : "Required. It is stored encrypted and never shown again.")</span></label>
+  </fieldset>
+
+  <label>Credential expires on (UTC) <input type="date" name="Form.TokenExpiresOn" value="@Model.Form.TokenExpiresOn?.ToString("yyyy-MM-dd")">
+    <span class="muted">Optional. A reminder of when the client's credential needs replacing.</span></label>
+  <label>Max delivery attempts <input type="number" name="Form.MaxAttempts" value="@Model.Form.MaxAttempts" min="1" max="10" required></label>
+  <label class="check"><input type="checkbox" name="Form.IsActive" value="true" @(Model.Form.IsActive ? "checked" : "")> Active (deliver results to this client)</label>
+  <input type="hidden" name="Form.IsActive" value="false">
+  <div class="actions"><button type="submit">Save</button><a asp-page="/Clients/Details" asp-route-id="@Model.ClientId">Cancel</a></div>
+</form>
+<script>
+  // Shows only the credentials for the chosen auth type. Without JavaScript, both sections stay visible.
+  (() => {
+    const select = document.getElementById('auth-type');
+    const sync = () => document.querySelectorAll('fieldset[data-auth]').forEach(f => f.hidden = f.dataset.auth !== select.value);
+    select.addEventListener('change', sync);
+    sync();
+  })();
+</script>

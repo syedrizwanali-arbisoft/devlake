@@ -1,0 +1,60 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page "{id:long}"
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.RequestLogs.DetailsModel
+@{
+    var log = Model.Details!.Log;
+    ViewData["Title"] = "Request " + log.CorrelationId;
+}
+<h1>Request <span class="mono">@log.CorrelationId</span></h1>
+<div class="panel">
+  <dl>
+    <dt>Status</dt><dd><span class="badge @AdminLabels.StatusClass(log.Status)">@log.Status</span></dd>
+    <dt>Client</dt><dd><a asp-page="/Clients/Details" asp-route-id="@log.ClientRefId">@log.ClientName</a> <span class="mono muted">@log.ClientId</span></dd>
+    <dt>Event type</dt><dd class="mono">@log.EventType</dd>
+    <dt>URL</dt><dd class="mono long">@log.Url</dd>
+    <dt>Received</dt><dd>@AdminPageModel.Utc(log.CreatedOn)</dd>
+  </dl>
+</div>
+
+<h2>Request body</h2>
+@if (Model.Details.Json is null)
+{
+    <p class="muted">No body was stored.</p>
+}
+else
+{
+    <pre>@DetailsModel.Pretty(Model.Details.Json)</pre>
+}
+
+<h2>Delivery attempts</h2>
+@if (Model.Details.Attempts.Count == 0)
+{
+    <p class="muted">No delivery attempts yet.</p>
+}
+@foreach (var attempt in Model.Details.Attempts)
+{
+    <div class="panel" style="margin-bottom:12px">
+      <dl>
+        <dt>Attempt</dt><dd>@AdminPageModel.Utc(attempt.AttemptOn) by <span class="mono">@attempt.AttemptBy</span></dd>
+        <dt>Result</dt><dd><span class="badge @AdminLabels.StatusClass(attempt.AttemptStatus)">@attempt.AttemptStatus</span></dd>
+        @if (attempt.FailureError is not null) { <dt>Error</dt><dd>@attempt.FailureError</dd> }
+      </dl>
+      @if (!string.IsNullOrEmpty(attempt.ResponseJson)) { <p class="muted" style="margin:12px 0 6px">Client's response</p><pre>@DetailsModel.Pretty(attempt.ResponseJson)</pre> }
+    </div>
+}
+<p><a asp-page="Index">Back to request logs</a></p>

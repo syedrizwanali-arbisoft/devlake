@@ -59,6 +59,16 @@ limitations under the License.
     .errors { padding:10px 12px; border-radius:6px; border:1px solid var(--danger); color:var(--danger); margin-bottom:16px; }
     .errors ul { margin:0; padding-left:18px; }
     .secret { padding:12px; border:2px dashed var(--accent); border-radius:8px; margin:12px 0; }
+    select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--text); }
+    fieldset { border:1px solid var(--line); border-radius:8px; padding:12px; display:grid; gap:12px; margin:0; }
+    legend { padding:0 6px; color:var(--muted); }
+    form.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin-bottom:16px; }
+    form.filters label { font-weight:400; }
+    form.filters input, form.filters select, form.filters button { height:36px; }
+    pre { margin:0; padding:12px; overflow:auto; max-height:420px; background:var(--bg); border:1px solid var(--line); border-radius:6px; font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .badge.Success { color:var(--ok); border-color:var(--ok); }
+    .badge.Failed, .badge.Revoked-no-callback-URL { color:var(--danger); border-color:var(--danger); }
+    .pager { display:flex; gap:12px; align-items:center; margin-top:12px; }
     dl { display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0; }
     dt { color:var(--muted); }
   </style>
@@ -73,6 +83,8 @@ limitations under the License.
           <a asp-page="/Scopes/Index">Scopes</a>
           <a asp-page="/SigningKeys/Index">Signing keys</a>
           <a asp-page="/AccessTokens/Index">Access tokens</a>
+          <a asp-page="/EmailMappings/Index">Email mappings</a>
+          <a asp-page="/RequestLogs/Index">Request logs</a>
           <form method="post" asp-page="/Account/Logout"><button class="link" type="submit">Sign out (@User.Identity.Name)</button></form>
       }
     </nav>

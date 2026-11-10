@@ -52,6 +52,13 @@ The API applies pending migrations at startup. A failed script stops startup.
 
 Changes record the admin as `createdBy` or `modifiedBy`. A revoked token records the admin in its reason.
 
+The portal also manages the integration side:
+
+- **Email mappings:** list, search, create and edit the other emails each engineer commits with. Emails are stored lowercase, and Arbisoft emails must be `@arbisoft.com`.
+- **Outbound config:** one per client. It sets the auth type (`oauth2` or `api_token`), base URL, max delivery attempts and active flag. Secrets are written once and stored encrypted; leaving one blank keeps the stored secret. The page shows when the credential was last rotated and when it expires.
+- **Callback URLs:** the event type to method and path mappings for each config. Only one URL can be active per event type.
+- **Request logs:** filter by client, status and UTC dates, and open a request to see its JSON body and every delivery attempt with the client's response.
+
 ## Stats APIs
 
 | API | Rate limit per client |

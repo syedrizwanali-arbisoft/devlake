@@ -53,6 +53,33 @@ public sealed class RequestLogRepository(IDbConnectionFactory connectionFactory)
             cancellationToken: cancellationToken));
     }
 
+    public async Task<RequestLog?> GetByIdAsync(long id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        return await connection.QuerySingleOrDefaultAsync<RequestLog>(new CommandDefinition(
+            "SELECT * FROM RequestLogs WHERE id = @id", new { id }, cancellationToken: cancellationToken));
+    }
+
+    public async Task<(IReadOnlyList<RequestLog> Logs, int Total)> SearchAsync(
+        long? clientRefId, string? status, DateTime? from, DateTime? to, int limit, int offset, CancellationToken cancellationToken = default)
+    {
+        const string where = """
+            WHERE (@clientRefId IS NULL OR clientRefId = @clientRefId)
+              AND (@status IS NULL OR status = @status)
+              AND (@from IS NULL OR createdOn >= @from)
+              AND (@to IS NULL OR createdOn < @to)
+            """;
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var results = await connection.QueryMultipleAsync(new CommandDefinition(
+            $"""
+            SELECT * FROM RequestLogs {where} ORDER BY createdOn DESC, id DESC LIMIT @limit OFFSET @offset;
+            SELECT COUNT(*) FROM RequestLogs {where};
+            """, new { clientRefId, status, from, to, limit, offset }, cancellationToken: cancellationToken));
+        var logs = (await results.ReadAsync<RequestLog>()).AsList();
+        var total = await results.ReadSingleAsync<int>();
+        return (logs, total);
+    }
+
     public async Task<RequestLog?> GetByCorrelationIdAsync(string correlationId, CancellationToken cancellationToken = default)
     {
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);

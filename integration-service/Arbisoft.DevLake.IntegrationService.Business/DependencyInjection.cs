@@ -45,6 +45,9 @@ public static class DependencyInjection
         services.AddSingleton<IScopeService, ScopeService>();
         services.AddSingleton<ISigningKeyService, SigningKeyService>();
         services.AddSingleton<IAccessTokenService, AccessTokenService>();
+        services.AddSingleton<IEmailMappingService, EmailMappingService>();
+        services.AddSingleton<IClientConfigService, ClientConfigService>();
+        services.AddSingleton<IRequestLogService, RequestLogService>();
 
         services.Configure<RequestOptions>(configuration.GetSection(RequestOptions.SectionName));
         services.AddSingleton<IIdempotencyCheck, IdempotencyCheck>();

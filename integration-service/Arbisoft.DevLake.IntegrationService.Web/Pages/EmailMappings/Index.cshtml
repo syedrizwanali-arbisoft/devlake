@@ -1,0 +1,44 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.EmailMappings.IndexModel
+@{
+    ViewData["Title"] = "Email mappings";
+}
+<h1>Email mappings</h1>
+<p class="muted">Stats requests name an engineer by Arbisoft email. Their stats are collected from that email and every email mapped to it here.</p>
+<form method="get" class="filters">
+  <label>Search <input type="text" name="q" value="@Model.Q" placeholder="name@arbisoft.com"></label>
+  <button class="secondary" type="submit">Search</button>
+  <a class="button" asp-page="Create">New mapping</a>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Arbisoft email</th><th>Mapped email</th><th>Created</th><th></th></tr></thead>
+  <tbody>
+  @foreach (var m in Model.Mappings)
+  {
+      <tr><td class="mono">@m.ArbisoftEmail</td><td class="mono">@m.Email</td><td>@AdminPageModel.Utc(m.CreatedOn)</td>
+          <td><a asp-page="Edit" asp-route-id="@m.Id">Edit</a></td></tr>
+  }
+  @if (Model.Mappings.Count == 0)
+  {
+      <tr><td colspan="4" class="muted">@(string.IsNullOrEmpty(Model.Q) ? "No mappings yet." : "No mappings match.")</td></tr>
+  }
+  </tbody>
+</table>
+</div>

@@ -19,17 +19,28 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Arbisoft.DevLake.IntegrationService.Web.Pages.Clients;
 
-public sealed class DetailsModel(IClientService clients) : AdminPageModel
+public sealed class DetailsModel(IClientService clients, IClientConfigService configs) : AdminPageModel
 {
     [BindProperty(SupportsGet = true)]
     public long Id { get; set; }
 
     public ClientDetailsDto? Details { get; private set; }
 
+    public ClientConfigDto? Config { get; private set; }
+
+    public int OutboundUrlCount { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
         Details = await clients.GetAsync(Id, cancellationToken);
-        return Details is null ? NotFound() : Page();
+        if (Details is null)
+        {
+            return NotFound();
+        }
+
+        Config = await configs.GetAsync(Id, cancellationToken);
+        OutboundUrlCount = Config is null ? 0 : (await configs.ListOutboundUrlsAsync(Id, cancellationToken)).Count;
+        return Page();
     }
 
     public async Task<IActionResult> OnPostScopesAsync(long[] scopeIds, CancellationToken cancellationToken)
