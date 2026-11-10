@@ -52,6 +52,18 @@ All three need a token with the `stats:read` scope. The stats APIs answer straig
 
 The same client sending the same emails and time frame within `Requests:DuplicateWindowSeconds` (300) gets the original `correlation_id`, and nothing new is queued. Revoked requests don't count as duplicates.
 
+## Outbound clients
+
+| Client | Settings | Calls |
+|---|---|---|
+| DevLake | `DevLake:BaseUrl`, `DevLake:TimeoutSeconds` | `GET is_valid`, `GET stats/{email}/{jira,github,ai_usage,ai_cost}?tf=` |
+| Workstream | `Workstream:BaseUrl`, `Workstream:PageSize`, `Workstream:TimeoutSeconds` | `GET is_valid`, `GET projects?page=&pageSize=` until the last page |
+| Sophia | `ClientConfigs` and `ClientConfigOutboundUrls` rows; `Sophia:TimeoutSeconds` | OAuth2 token request, then the callback |
+
+Every client has a total timeout and retries transient failures (5xx, 408, 429 and network errors) with backoff. Sophia's callback is sent once with no HTTP retry, because the processing job records each attempt and retries up to `maxAttempts`. A client config's `authType` is `oauth2` (client credentials) or `api_token` (a static bearer token), and its secrets are stored encrypted with `Security:EncryptionKey`.
+
+The response shapes of DevLake's stats endpoints are defined with them in DEVLAKE-418, so for now the client returns their JSON as is. Workstream's API isn't documented yet. The client accepts each page either as a JSON array, which ends with a short page, or as `{ "results": [...], "next": ... }`, which ends when `next` is null.
+
 ## Request queue
 
 Stats requests go to the durable queue `RabbitMq:RequestQueue` as persistent messages. The processing job takes them in batches and acknowledges each one only after it is handled. A message that fails stays queued for the next run. If it fails again, it moves to `<RequestQueue>.failed`, where it stays for inspection or replay.
@@ -65,6 +77,8 @@ Secrets come from environment variables, never from `appsettings.json`.
 | `ConnectionStrings__IntegrationDb` | MySQL connection string |
 | `Security__EncryptionKey` | Base64 of a 32-byte AES key, for stored outbound credentials |
 | `RabbitMq__Username`, `RabbitMq__Password` | RabbitMQ credentials, the same values as `RABBITMQ_USER` and `RABBITMQ_PASSWORD` in `.env` |
+| `DevLake__ApiToken` | DevLake's API token, sent as `Authorization: Bearer` |
+| `Workstream__ApiToken` | Workstream's API token |
 | `Secrets__<privateKeyRef>` | PEM private key of the signing key whose `privateKeyRef` is `<privateKeyRef>` |
 
 ## Test

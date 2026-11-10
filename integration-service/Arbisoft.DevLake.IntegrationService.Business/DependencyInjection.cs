@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddSingleton<IRequestService, RequestService>();
         services.AddSingleton<IRequestHandler, RequestHandler>();
         services.AddSingleton<IRequestStatusService, RequestStatusService>();
+        services.AddSingleton<ICallbackTargetResolver, CallbackTargetResolver>();
         return services;
     }
 }

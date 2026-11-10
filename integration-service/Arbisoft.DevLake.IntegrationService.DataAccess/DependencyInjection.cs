@@ -13,12 +13,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis;
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis.DevLake;
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis.Sophia;
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis.Workstream;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Persistence;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
@@ -53,6 +58,61 @@ public static class DependencyInjection
         services.AddSingleton<IRabbitMqConnection, RabbitMqConnection>();
         services.AddSingleton<IRequestQueuePublisher, RequestQueuePublisher>();
         services.AddSingleton<IRequestQueueConsumer, RequestQueueConsumer>();
+
+        services.AddExternalApiClients(configuration);
         return services;
+    }
+
+    private static void AddExternalApiClients(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<DevLakeOptions>(configuration.GetSection(DevLakeOptions.SectionName));
+        services.Configure<WorkstreamOptions>(configuration.GetSection(WorkstreamOptions.SectionName));
+        services.Configure<SophiaOptions>(configuration.GetSection(SophiaOptions.SectionName));
+
+        // The standard handler adds per-attempt and total timeouts, retries on transient failures (5xx, 408, 429,
+        // network errors) with backoff, and a circuit breaker. Base URLs are checked when a client is first created.
+        services.AddHttpClient<IDevLakeClient, DevLakeClient>((provider, http) =>
+                http.BaseAddress = ExternalApiCalls.NormalizeBaseUrl(
+                    provider.GetRequiredService<IOptions<DevLakeOptions>>().Value.BaseUrl, "DevLake:BaseUrl"))
+            .AddStandardResilienceHandler()
+            .Configure((resilience, provider) => SetTotalTimeout(
+                resilience, provider.GetRequiredService<IOptions<DevLakeOptions>>().Value.TimeoutSeconds));
+
+        services.AddHttpClient<IWorkstreamClient, WorkstreamClient>((provider, http) =>
+                http.BaseAddress = ExternalApiCalls.NormalizeBaseUrl(
+                    provider.GetRequiredService<IOptions<WorkstreamOptions>>().Value.BaseUrl, "Workstream:BaseUrl"))
+            .AddStandardResilienceHandler()
+            .Configure((resilience, provider) => SetTotalTimeout(
+                resilience, provider.GetRequiredService<IOptions<WorkstreamOptions>>().Value.TimeoutSeconds));
+
+        services.AddHttpClient(SophiaClient.TokenHttpClient)
+            .AddStandardResilienceHandler()
+            .Configure((resilience, provider) =>
+            {
+                // A client credentials token request has no side effects, so it is safe to retry even though it is a POST.
+                SetTotalTimeout(resilience, provider.GetRequiredService<IOptions<SophiaOptions>>().Value.TimeoutSeconds);
+            });
+        services.AddHttpClient(SophiaClient.CallbackHttpClient)
+            .AddStandardResilienceHandler()
+            .Configure((resilience, provider) =>
+            {
+                SetTotalTimeout(resilience, provider.GetRequiredService<IOptions<SophiaOptions>>().Value.TimeoutSeconds);
+                resilience.Retry.DisableForUnsafeHttpMethods();
+            });
+        services.AddSingleton<ISophiaClient, SophiaClient>();
+    }
+
+    private static void SetTotalTimeout(HttpStandardResilienceOptions resilience, int seconds)
+    {
+        var total = TimeSpan.FromSeconds(Math.Max(seconds, 1));
+        resilience.TotalRequestTimeout.Timeout = total;
+
+        // Each attempt must time out before the total does, or the options fail validation. A short total budget
+        // shrinks the 10-second default per attempt to half the total, which still leaves room for a retry.
+        var halfTotal = total / 2;
+        if (resilience.AttemptTimeout.Timeout >= halfTotal)
+        {
+            resilience.AttemptTimeout.Timeout = halfTotal;
+        }
     }
 }
