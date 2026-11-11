@@ -36,9 +36,14 @@ public class IdempotencyCheckTests
         return new IdempotencyCheck(_requestLogs, options, _time);
     }
 
-    private static TimeFrame Frame(string text)
+    private static StatsPeriod Frame(string text)
     {
-        return TimeFrame.TryParse(text, out var timeFrame, out _) ? timeFrame : throw new ArgumentException("Not a time frame.", nameof(text));
+        return StatsPeriod.TryParse(text, null, null, out var period, out _) ? period! : throw new ArgumentException("Not a time frame.", nameof(text));
+    }
+
+    private static StatsPeriod Range(string from, string to)
+    {
+        return StatsPeriod.TryParse(null, from, to, out var period, out _) ? period! : throw new ArgumentException("Not a range.", nameof(from));
     }
 
     private void Existing(RequestLog? log) => _requestLogs.GetByIdempotencyKeyAsync("key", Arg.Any<CancellationToken>()).Returns(log);
@@ -67,6 +72,28 @@ public class IdempotencyCheckTests
         Assert.NotEqual(baseline, check.ComputeKey(1, "engineer-stats", Frame("1w"), ["a@arbisoft.com"]));
         Assert.NotEqual(baseline, check.ComputeKey(1, "engineer-stats", Frame("24h"), ["a@arbisoft.com", "b@arbisoft.com"]));
         Assert.NotEqual(baseline, check.ComputeKey(1, "engineer-stats", Frame("24h"), ["b@arbisoft.com"]));
+    }
+
+    [Fact]
+    public void ComputeKey_ForARange_IsStableAcrossOffsets_AndDiffersByEitherEnd()
+    {
+        var check = Create();
+        var utc = check.ComputeKey(1, "engineer-stats", Range("2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z"), ["a@arbisoft.com"]);
+        var sameInstantInAnotherOffset = check.ComputeKey(1, "engineer-stats", Range("2026-11-01T05:00:00+05:00", "2026-11-08T05:00:00+05:00"), ["a@arbisoft.com"]);
+
+        Assert.Equal(utc, sameInstantInAnotherOffset);
+        Assert.NotEqual(utc, check.ComputeKey(1, "engineer-stats", Range("2026-11-01T00:00:01Z", "2026-11-08T00:00:00Z"), ["a@arbisoft.com"]));
+        Assert.NotEqual(utc, check.ComputeKey(1, "engineer-stats", Range("2026-11-01T00:00:00Z", "2026-11-08T00:00:01Z"), ["a@arbisoft.com"]));
+    }
+
+    [Fact]
+    public void ComputeKey_ARangeAndATimeFrame_NeverShareAKey()
+    {
+        var check = Create();
+
+        Assert.NotEqual(
+            check.ComputeKey(1, "engineer-stats", Frame("24h"), ["a@arbisoft.com"]),
+            check.ComputeKey(1, "engineer-stats", Range("2026-11-01T00:00:00Z", "2026-11-02T00:00:00Z"), ["a@arbisoft.com"]));
     }
 
     [Fact]

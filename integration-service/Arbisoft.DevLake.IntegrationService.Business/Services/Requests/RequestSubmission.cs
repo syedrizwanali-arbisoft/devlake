@@ -20,10 +20,10 @@ namespace Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 /// <param name="EventType">One of <see cref="RequestEventTypes"/>.</param>
 /// <param name="RequestUrl">The URL pattern recorded in the request log. It never contains an email.</param>
 /// <param name="Emails">Normalized, distinct emails.</param>
-/// <param name="TimeFrame">The requested time frame.</param>
+/// <param name="Period">The period the request covers: a time frame or a range.</param>
 /// <param name="IdempotencyKey">The key from <see cref="IIdempotencyCheck.ComputeKey"/>.</param>
 public sealed record RequestSubmission(
-    long ClientRefId, string EventType, string RequestUrl, IReadOnlyList<string> Emails, TimeFrame TimeFrame, string IdempotencyKey);
+    long ClientRefId, string EventType, string RequestUrl, IReadOnlyList<string> Emails, StatsPeriod Period, string IdempotencyKey);
 
 public enum SubmissionOutcome
 {

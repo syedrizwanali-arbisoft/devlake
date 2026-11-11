@@ -53,7 +53,7 @@ public sealed class RequestService : IRequestService
     public async Task<SubmissionResult> SubmitAsync(RequestSubmission submission, CancellationToken cancellationToken)
     {
         var correlationId = Guid.NewGuid().ToString("D");
-        var body = JsonSerializer.Serialize(new QueuedStatsRequest(correlationId, submission.EventType, submission.Emails, submission.TimeFrame.Text, _timeProvider.GetUtcNow()));
+        var body = JsonSerializer.Serialize(ToBody(correlationId, submission));
 
         if (!await HasActiveCallbackAsync(submission, cancellationToken))
         {
@@ -78,6 +78,19 @@ public sealed class RequestService : IRequestService
         }
 
         throw new InvalidOperationException("The request could not be queued because its idempotency key kept changing hands.");
+    }
+
+    private QueuedStatsRequest ToBody(string correlationId, RequestSubmission submission)
+    {
+        var period = submission.Period;
+        return new QueuedStatsRequest(
+            correlationId,
+            submission.EventType,
+            submission.Emails,
+            _timeProvider.GetUtcNow(),
+            period.TimeFrame?.Text,
+            period.From is { } from ? StatsPeriod.FormatInstant(from) : null,
+            period.To is { } to ? StatsPeriod.FormatInstant(to) : null);
     }
 
     /// <summary>

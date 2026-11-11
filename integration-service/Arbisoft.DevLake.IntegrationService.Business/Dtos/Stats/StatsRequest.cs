@@ -15,5 +15,5 @@
 
 namespace Arbisoft.DevLake.IntegrationService.Business.Dtos.Stats;
 
-/// <summary>A request for one engineer's stats: the Arbisoft email and the time frame such as <c>24h</c>.</summary>
-public sealed record StatsRequest(string Email, string TimeFrame);
+/// <summary>A request for one engineer's stats: the Arbisoft email, and either a time frame such as <c>24h</c> or a <c>From</c> and <c>To</c> range.</summary>
+public sealed record StatsRequest(string Email, string? TimeFrame, string? From = null, string? To = null);

@@ -37,7 +37,7 @@ public class RequestHandlerTests
         var options = Substitute.For<IOptionsSnapshot<RequestsOptions>>();
         options.Value.Returns(new RequestsOptions());
         _clients.GetByClientIdAsync("sophia", Arg.Any<CancellationToken>()).Returns(new Client { Id = 7, ClientId = "sophia", IsActive = true });
-        _idempotency.ComputeKey(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<TimeFrame>(), Arg.Any<IReadOnlyCollection<string>>()).Returns("the-key");
+        _idempotency.ComputeKey(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<StatsPeriod>(), Arg.Any<IReadOnlyCollection<string>>()).Returns("the-key");
         _requestService.SubmitAsync(Arg.Any<RequestSubmission>(), Arg.Any<CancellationToken>()).Returns(new SubmissionResult(SubmissionOutcome.Queued, "cid-1"));
         _handler = new RequestHandler(_clients, _idempotency, _requestService, options);
     }
@@ -51,8 +51,27 @@ public class RequestHandlerTests
         Assert.Equal(new StatsAcknowledgement("200", "jane.doe@arbisoft.com", "cid-1", string.Empty), result.Acknowledgement);
         await _requestService.Received(1).SubmitAsync(
             Arg.Is<RequestSubmission>(s => s.ClientRefId == 7 && s.EventType == "engineer-stats" && s.Emails.SequenceEqual(SingleEmail)
-                && s.TimeFrame.Text == "24h" && s.IdempotencyKey == "the-key"),
+                && s.Period.TimeFrame!.Value.Text == "24h" && s.IdempotencyKey == "the-key"),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Single_WithARange_SubmitsTheRangeInUtc_AndRecordsARangeUrl()
+    {
+        await _handler.HandleSingleAsync("sophia", new StatsRequest("jane@arbisoft.com", null, "2026-11-01T05:00:00+05:00", "2026-11-08T00:00:00Z"), CancellationToken.None);
+
+        await _requestService.Received(1).SubmitAsync(
+            Arg.Is<RequestSubmission>(s => s.Period.TimeFrame == null && s.Period.From == new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero)
+                && s.Period.To == new DateTimeOffset(2026, 11, 8, 0, 0, 0, TimeSpan.Zero) && s.RequestUrl == "/api/v1/engineers/{email}/stats?from={from}&to={to}"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Single_WithATimeFrame_RecordsATimeFrameUrl()
+    {
+        await _handler.HandleSingleAsync("sophia", new StatsRequest("jane@arbisoft.com", "24h"), CancellationToken.None);
+
+        await _requestService.Received(1).SubmitAsync(Arg.Is<RequestSubmission>(s => s.RequestUrl == "/api/v1/engineers/{email}/stats?tf={timeFrame}"), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -126,6 +145,8 @@ public class RequestHandlerTests
         await Assert.ThrowsAsync<ArgumentException>(() => _handler.HandleSingleAsync("sophia", new StatsRequest("not-an-email", "24h"), CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentException>(() => _handler.HandleSingleAsync("sophia", new StatsRequest("jane@gmail.com", "24h"), CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentException>(() => _handler.HandleSingleAsync("sophia", new StatsRequest("jane@arbisoft.com", "24H"), CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => _handler.HandleSingleAsync("sophia", new StatsRequest("jane@arbisoft.com", "24h", "2026-11-01T00:00:00Z", "2026-11-02T00:00:00Z"), CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => _handler.HandleSingleAsync("sophia", new StatsRequest("jane@arbisoft.com", null, "2026-11-02T00:00:00Z", "2026-11-01T00:00:00Z"), CancellationToken.None));
     }
 
     /// <summary>Compares batch acknowledgements by value, including the email list.</summary>

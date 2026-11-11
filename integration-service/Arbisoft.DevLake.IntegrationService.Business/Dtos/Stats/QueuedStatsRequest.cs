@@ -17,10 +17,16 @@ using System.Text.Json.Serialization;
 
 namespace Arbisoft.DevLake.IntegrationService.Business.Dtos.Stats;
 
-/// <summary>The JSON body queued in RabbitMQ and kept in RequestLogJsons. The processing job reads it back, so changes must be additive.</summary>
+/// <summary>
+/// The JSON body queued in RabbitMQ and kept in RequestLogJsons. The processing job reads it back, so changes must be additive.
+/// A request covers either a <c>time_frame</c> such as <c>24h</c>, or a range from <c>from</c> to <c>to</c> (UTC, second precision); the
+/// fields that do not apply are left out.
+/// </summary>
 public sealed record QueuedStatsRequest(
     [property: JsonPropertyName("correlation_id")] string CorrelationId,
     [property: JsonPropertyName("event_type")] string EventType,
     [property: JsonPropertyName("emails")] IReadOnlyList<string> Emails,
-    [property: JsonPropertyName("time_frame")] string TimeFrame,
-    [property: JsonPropertyName("requested_on")] DateTimeOffset RequestedOn);
+    [property: JsonPropertyName("requested_on")] DateTimeOffset RequestedOn,
+    [property: JsonPropertyName("time_frame"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TimeFrame = null,
+    [property: JsonPropertyName("from"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? From = null,
+    [property: JsonPropertyName("to"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? To = null);

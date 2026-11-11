@@ -135,6 +135,149 @@ public sealed class StatsEndpointTests : ApiTestBase
         Assert.Empty(await Seed.LogsForAsync(client));
     }
 
+    private Task<ApiResponse> GetRangeAsync(string token, string email, string? from, string? to, string? timeFrame = null)
+    {
+        var query = new List<string>();
+        if (timeFrame is not null)
+        {
+            query.Add($"tf={Uri.EscapeDataString(timeFrame)}");
+        }
+
+        if (from is not null)
+        {
+            query.Add($"from={Uri.EscapeDataString(from)}");
+        }
+
+        if (to is not null)
+        {
+            query.Add($"to={Uri.EscapeDataString(to)}");
+        }
+
+        return SendAsync(HttpMethod.Get, $"/api/v1/engineers/{Encode(email)}/stats?{string.Join('&', query)}", token);
+    }
+
+    [BrokersFact]
+    public async Task ARangeRequest_IsAcknowledged_Logged_AndQueuedWithFromAndTo()
+    {
+        var (client, token) = await ClientWithCallbacksAsync(Single);
+
+        var response = await GetRangeAsync(token, "Jane.Doe@arbisoft.com", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z");
+
+        Assert.Equal(HttpStatusCode.OK, response.Status);
+        Assert.Equal("200", response.Json.GetProperty("status").GetString());
+        Assert.Equal("jane.doe@arbisoft.com", response.Json.GetProperty("email").GetString());
+        Assert.Equal(string.Empty, response.Json.GetProperty("error").GetString());
+
+        var log = (await Seed.LogAsync(response.Correlation))!;
+        Assert.Equal(RequestStatus.Queued, log.Status);
+        Assert.Equal("engineer-stats", log.EventType);
+        Assert.Equal("/api/v1/engineers/{email}/stats?from={from}&to={to}", log.Url);
+        Assert.Single(await Seed.LogsForAsync(client));
+
+        var message = Assert.Single(await RabbitMqHarness.DrainAsync(Factory.QueueName));
+        Assert.Equal("engineer-stats", message.EventType);
+        var body = JsonDocument.Parse(message.Body).RootElement;
+        Assert.Equal("2026-11-01T00:00:00Z", body.GetProperty("from").GetString());
+        Assert.Equal("2026-11-08T00:00:00Z", body.GetProperty("to").GetString());
+        Assert.False(body.TryGetProperty("time_frame", out _));
+        Assert.True(JsonElement.DeepEquals(body, JsonDocument.Parse((await Seed.LogJsonAsync(log.Id))!).RootElement));
+    }
+
+    [BrokersFact]
+    public async Task ARangeInAnotherOffset_IsQueuedInUtc_AndPlusSignsMustBeEncoded()
+    {
+        var (_, token) = await ClientWithCallbacksAsync(Single);
+
+        var response = await GetRangeAsync(token, "jane@arbisoft.com", "2026-11-01T05:00:00+05:00", "2026-11-08T05:30:00+05:30");
+
+        Assert.Equal(HttpStatusCode.OK, response.Status);
+        var body = JsonDocument.Parse(Assert.Single(await RabbitMqHarness.DrainAsync(Factory.QueueName)).Body).RootElement;
+        Assert.Equal("2026-11-01T00:00:00Z", body.GetProperty("from").GetString());
+        Assert.Equal("2026-11-08T00:00:00Z", body.GetProperty("to").GetString());
+    }
+
+    [MySqlFact]
+    public async Task AnInvalidRange_IsRejectedWith400_NamingTheParameter_AndNothingIsRecorded()
+    {
+        var (client, token) = await ClientWithCallbacksAsync(Single);
+        var cases = new (string? Tf, string? From, string? To, string Member)[]
+        {
+            (null, "2026-11-08T00:00:00Z", "2026-11-01T00:00:00Z", "from"),
+            (null, "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z", "from"),
+            (null, "2026-11-01", "2026-11-08", "from"),
+            (null, "2026-11-01T00:00:00", "2026-11-08T00:00:00", "from"),
+            (null, "yesterday", "today", "from"),
+            (null, "2025-01-01T00:00:00Z", "2026-11-08T00:00:00Z", "from"),
+            (null, "2026-11-01T00:00:00Z", null, "to"),
+            (null, null, "2026-11-08T00:00:00Z", "from"),
+            ("24h", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z", "tf"),
+            (null, null, null, "tf")
+        };
+
+        foreach (var (tf, from, to, member) in cases)
+        {
+            var response = await GetRangeAsync(token, "jane@arbisoft.com", from, to, tf);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.Status);
+            Assert.True(response.Json.GetProperty("errors").TryGetProperty(member, out _), $"{from} {to} {tf}: expected an error on {member}: {response.Text}");
+        }
+
+        Assert.Empty(await Seed.LogsForAsync(client));
+    }
+
+    [MySqlFact]
+    public async Task ARangeRequest_NeedsTheSameScope_AndAnInvalidEmailIsStillRejected()
+    {
+        var client = await Seed.SeedClientAsync(scopes: ["projects:fetch"]);
+        var wrongScope = await ApiSeed.RequestTokenAsync(Http, client);
+        var (_, token) = await ClientWithCallbacksAsync(Single);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await GetRangeAsync(wrongScope, "jane@arbisoft.com", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z")).Status);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await GetRangeAsync(string.Empty, "jane@arbisoft.com", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z")).Status);
+        Assert.Equal(HttpStatusCode.BadRequest, (await GetRangeAsync(token, "someone@gmail.com", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z")).Status);
+    }
+
+    [MySqlFact]
+    public async Task ARangeRequest_WithNoCallbackUrl_Is422WithTheContractBody()
+    {
+        var (_, token) = await ClientWithCallbacksAsync();
+
+        var response = await GetRangeAsync(token, "jane@arbisoft.com", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z");
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.Status);
+        Assert.Equal("Revoked - no callback URL", response.Json.GetProperty("error").GetString());
+    }
+
+    [BrokersFact]
+    public async Task TheSameRange_IsADuplicate_InAnyOffsetAndEmailCase_ButAnotherRangeOrATimeFrameIsNot()
+    {
+        var (client, token) = await ClientWithCallbacksAsync(Single);
+
+        var first = await GetRangeAsync(token, "jane@arbisoft.com", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z");
+        var sameInstants = await GetRangeAsync(token, "JANE@arbisoft.com", "2026-11-01T05:00:00+05:00", "2026-11-08T05:00:00+05:00");
+        var otherEnd = await GetRangeAsync(token, "jane@arbisoft.com", "2026-11-01T00:00:00Z", "2026-11-09T00:00:00Z");
+        var timeFrame = await GetStatsAsync(token, "jane@arbisoft.com", "1w");
+
+        Assert.Equal(first.Correlation, sameInstants.Correlation);
+        Assert.NotEqual(first.Correlation, otherEnd.Correlation);
+        Assert.NotEqual(first.Correlation, timeFrame.Correlation);
+        Assert.Equal(3, (await Seed.LogsForAsync(client)).Count);
+        Assert.Equal(3, (await RabbitMqHarness.DrainAsync(Factory.QueueName)).Count);
+    }
+
+    [BrokersFact]
+    public async Task TenIdenticalRangeRequestsAtOnce_ProduceOneRequestAndOneMessage()
+    {
+        var (client, token) = await ClientWithCallbacksAsync(Single);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => GetRangeAsync(token, "race@arbisoft.com", "2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z")));
+
+        Assert.All(responses, response => Assert.Equal(HttpStatusCode.OK, response.Status));
+        Assert.Single(responses.Select(response => response.Correlation).Distinct());
+        Assert.Single(await Seed.LogsForAsync(client));
+        Assert.Single(await RabbitMqHarness.DrainAsync(Factory.QueueName));
+    }
+
     [BrokersFact]
     public async Task AnIdenticalRequestInsideTheWindow_GetsTheOriginalCorrelationId_AndIsNotQueuedAgain()
     {

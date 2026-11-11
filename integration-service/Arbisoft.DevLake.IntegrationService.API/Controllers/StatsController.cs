@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Arbisoft.DevLake.IntegrationService.API.RateLimiting;
 using Arbisoft.DevLake.IntegrationService.Business.Dtos.Stats;
@@ -44,9 +43,13 @@ public sealed class StatsController : ControllerBase
         _handler = handler;
     }
 
-    /// <summary>Requests the stats of one engineer for a time frame such as 24h, 1w, 30d, 11M or 1y.</summary>
+    /// <summary>
+    /// Requests the stats of one engineer, either for a time frame counted back from now (<c>tf=24h</c>; units h, d, w, M or y, case-sensitive)
+    /// or for an explicit range (<c>from=2026-11-01T00:00:00Z&amp;to=2026-11-08T00:00:00Z</c>). Give one or the other. A range is UTC, at
+    /// second precision, and at most one year long. In a URL, write a <c>+</c> in an offset as <c>%2B</c>.
+    /// </summary>
     /// <param name="email">The engineer's Arbisoft email.</param>
-    /// <param name="timeFrame">The time frame, with a case-sensitive unit: h, d, w, M or y.</param>
+    /// <param name="period">The time frame or the range.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
     [HttpGet("{email}/stats")]
     [EnableRateLimiting(RateLimitPolicies.SingleStats)]
@@ -59,10 +62,10 @@ public sealed class StatsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetStatsAsync(
         [FromRoute, ArbisoftEmail] string email,
-        [FromQuery(Name = "tf"), Required, TimeFrameValue] string? timeFrame,
+        [FromQuery] StatsPeriodQuery period,
         CancellationToken cancellationToken)
     {
-        var result = await _handler.HandleSingleAsync(ClientId(), new StatsRequest(email, timeFrame!), cancellationToken);
+        var result = await _handler.HandleSingleAsync(ClientId(), new StatsRequest(email, period.TimeFrame, period.From, period.To), cancellationToken);
         return result.Outcome switch
         {
             IntakeOutcome.Accepted => Ok(result.Acknowledgement),

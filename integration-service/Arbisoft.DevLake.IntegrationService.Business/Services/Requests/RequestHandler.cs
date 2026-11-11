@@ -25,6 +25,7 @@ public sealed class RequestHandler : IRequestHandler
     private const string OkStatus = "200";
     private const string UnprocessableStatus = "422";
     private const string SingleRequestUrl = "/api/v1/engineers/{email}/stats?tf={timeFrame}";
+    private const string SingleRangeRequestUrl = "/api/v1/engineers/{email}/stats?from={from}&to={to}";
     private const string BatchRequestUrl = "/api/v1/engineers/stats/batch";
 
     private readonly IClientRepository _clients;
@@ -42,7 +43,9 @@ public sealed class RequestHandler : IRequestHandler
 
     public async Task<IntakeResult<StatsAcknowledgement>> HandleSingleAsync(string clientId, StatsRequest request, CancellationToken cancellationToken)
     {
-        var intake = await HandleAsync(clientId, RequestEventTypes.EngineerStats, [request.Email], request.TimeFrame, SingleRequestUrl, cancellationToken);
+        var url = string.IsNullOrEmpty(request.TimeFrame) ? SingleRangeRequestUrl : SingleRequestUrl;
+        var input = new IntakeInput(clientId, RequestEventTypes.EngineerStats, [request.Email], request.TimeFrame, request.From, request.To, url);
+        var intake = await HandleAsync(input, cancellationToken);
         if (intake.Outcome == IntakeOutcome.UnknownClient)
         {
             return new IntakeResult<StatsAcknowledgement>(IntakeOutcome.UnknownClient, null);
@@ -54,7 +57,8 @@ public sealed class RequestHandler : IRequestHandler
 
     public async Task<IntakeResult<BatchStatsAcknowledgement>> HandleBatchAsync(string clientId, BatchStatsRequest request, CancellationToken cancellationToken)
     {
-        var intake = await HandleAsync(clientId, RequestEventTypes.EngineerStatsBatch, request.Emails!, request.TimeFrame!, BatchRequestUrl, cancellationToken);
+        var input = new IntakeInput(clientId, RequestEventTypes.EngineerStatsBatch, request.Emails!, request.TimeFrame, null, null, BatchRequestUrl);
+        var intake = await HandleAsync(input, cancellationToken);
         if (intake.Outcome == IntakeOutcome.UnknownClient)
         {
             return new IntakeResult<BatchStatsAcknowledgement>(IntakeOutcome.UnknownClient, null);
@@ -64,27 +68,26 @@ public sealed class RequestHandler : IRequestHandler
         return new IntakeResult<BatchStatsAcknowledgement>(intake.Outcome, acknowledgement);
     }
 
-    private async Task<Intake> HandleAsync(
-        string clientId, string eventType, IEnumerable<string> rawEmails, string rawTimeFrame, string requestUrl, CancellationToken cancellationToken)
+    private async Task<Intake> HandleAsync(IntakeInput input, CancellationToken cancellationToken)
     {
-        var client = await _clients.GetByClientIdAsync(clientId, cancellationToken);
+        var client = await _clients.GetByClientIdAsync(input.ClientId, cancellationToken);
         if (client is not { IsActive: true })
         {
             return new Intake(IntakeOutcome.UnknownClient, string.Empty, []);
         }
 
         var domains = _options.Value.AllowedEmailDomains;
-        var emails = rawEmails.Select(email => EmailNormalizer.Normalize(email, domains)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var timeFrame = TimeFrame.TryParse(rawTimeFrame, out var parsed, out var error) ? parsed : throw new ArgumentException(error, nameof(rawTimeFrame));
+        var emails = input.RawEmails.Select(email => EmailNormalizer.Normalize(email, domains)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var period = StatsPeriod.TryParse(input.RawTimeFrame, input.RawFrom, input.RawTo, out var parsed, out var error) ? parsed! : throw new ArgumentException(error, nameof(input));
 
-        var key = _idempotency.ComputeKey(client.Id, eventType, timeFrame, emails);
+        var key = _idempotency.ComputeKey(client.Id, input.EventType, period, emails);
         var duplicate = await _idempotency.FindDuplicateAsync(key, cancellationToken);
         if (duplicate is not null)
         {
             return new Intake(IntakeOutcome.Accepted, duplicate.CorrelationId, emails);
         }
 
-        var result = await _requestService.SubmitAsync(new RequestSubmission(client.Id, eventType, requestUrl, emails, timeFrame, key), cancellationToken);
+        var result = await _requestService.SubmitAsync(new RequestSubmission(client.Id, input.EventType, input.RequestUrl, emails, period, key), cancellationToken);
         var outcome = result.Outcome == SubmissionOutcome.NoCallbackUrl ? IntakeOutcome.NoCallbackUrl : IntakeOutcome.Accepted;
         return new Intake(outcome, result.CorrelationId, emails);
     }
@@ -92,6 +95,9 @@ public sealed class RequestHandler : IRequestHandler
     private static string StatusOf(IntakeOutcome outcome) => outcome == IntakeOutcome.NoCallbackUrl ? UnprocessableStatus : OkStatus;
 
     private static string ErrorOf(IntakeOutcome outcome) => outcome == IntakeOutcome.NoCallbackUrl ? RequestStatus.RevokedNoCallbackUrl : string.Empty;
+
+    private sealed record IntakeInput(
+        string ClientId, string EventType, IEnumerable<string> RawEmails, string? RawTimeFrame, string? RawFrom, string? RawTo, string RequestUrl);
 
     private sealed record Intake(IntakeOutcome Outcome, string CorrelationId, IReadOnlyList<string> Emails);
 }

@@ -20,10 +20,10 @@ namespace Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 public interface IIdempotencyCheck
 {
     /// <summary>
-    /// The idempotency key for a request: the same client, event type, time frame and set of emails always give the same key,
+    /// The idempotency key for a request: the same client, event type, period and set of emails always give the same key,
     /// whatever the order of the emails. The emails must already be normalized (see <see cref="EmailNormalizer"/>).
     /// </summary>
-    string ComputeKey(long clientRefId, string eventType, TimeFrame timeFrame, IReadOnlyCollection<string> normalizedEmails);
+    string ComputeKey(long clientRefId, string eventType, StatsPeriod period, IReadOnlyCollection<string> normalizedEmails);
 
     /// <summary>The earlier request that makes this one a duplicate, or null when it should be queued.</summary>
     Task<RequestLog?> FindDuplicateAsync(string key, CancellationToken cancellationToken);

@@ -40,10 +40,10 @@ public sealed class IdempotencyCheck : IIdempotencyCheck
         _timeProvider = timeProvider;
     }
 
-    public string ComputeKey(long clientRefId, string eventType, TimeFrame timeFrame, IReadOnlyCollection<string> normalizedEmails)
+    public string ComputeKey(long clientRefId, string eventType, StatsPeriod period, IReadOnlyCollection<string> normalizedEmails)
     {
         // A JSON array cannot be read two ways: no choice of values can make two different requests produce the same text.
-        var canonical = JsonSerializer.Serialize(new object[] { clientRefId, eventType, timeFrame.Text, normalizedEmails.Order(StringComparer.Ordinal).ToArray() });
+        var canonical = JsonSerializer.Serialize(new object[] { clientRefId, eventType, period.Canonical, normalizedEmails.Order(StringComparer.Ordinal).ToArray() });
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 

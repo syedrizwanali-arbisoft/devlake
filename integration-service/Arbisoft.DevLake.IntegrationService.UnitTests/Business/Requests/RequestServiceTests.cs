@@ -44,7 +44,7 @@ public class RequestServiceTests
 
     private static RequestSubmission Submission(string eventType = RequestEventTypes.EngineerStats, params string[] emails)
     {
-        var timeFrame = TimeFrame.TryParse("24h", out var parsed, out _) ? parsed : throw new InvalidOperationException("Test time frame is invalid.");
+        var timeFrame = StatsPeriod.TryParse("24h", null, null, out var parsed, out _) ? parsed! : throw new InvalidOperationException("Test time frame is invalid.");
         return new RequestSubmission(7, eventType, "/api/v1/engineers/{email}/stats?tf={timeFrame}", emails.Length == 0 ? ["jane@arbisoft.com"] : emails, timeFrame, "the-key");
     }
 
@@ -105,6 +105,38 @@ public class RequestServiceTests
         Assert.Equal(result.CorrelationId, body.GetProperty("correlation_id").GetString());
         Assert.Equal("24h", body.GetProperty("time_frame").GetString());
         Assert.Equal(["a@arbisoft.com", "b@arbisoft.com"], body.GetProperty("emails").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public async Task Submit_ForARange_QueuesFromAndToInsteadOfATimeFrame()
+    {
+        GivenCallback();
+        QueueMessage? published = null;
+        await _publisher.PublishAsync(Arg.Do<QueueMessage>(m => published = m), Arg.Any<CancellationToken>());
+        var period = StatsPeriod.TryParse(null, "2026-11-01T05:00:00+05:00", "2026-11-08T00:00:00Z", out var parsed, out _) ? parsed! : throw new InvalidOperationException();
+        var submission = Submission() with { Period = period, RequestUrl = "/api/v1/engineers/{email}/stats?from={from}&to={to}" };
+
+        await _service.SubmitAsync(submission, CancellationToken.None);
+
+        var body = JsonDocument.Parse(published!.Json).RootElement;
+        Assert.Equal("2026-11-01T00:00:00Z", body.GetProperty("from").GetString());
+        Assert.Equal("2026-11-08T00:00:00Z", body.GetProperty("to").GetString());
+        Assert.False(body.TryGetProperty("time_frame", out _));
+    }
+
+    [Fact]
+    public async Task Submit_ForATimeFrame_LeavesFromAndToOut()
+    {
+        GivenCallback();
+        QueueMessage? published = null;
+        await _publisher.PublishAsync(Arg.Do<QueueMessage>(m => published = m), Arg.Any<CancellationToken>());
+
+        await _service.SubmitAsync(Submission(), CancellationToken.None);
+
+        var body = JsonDocument.Parse(published!.Json).RootElement;
+        Assert.Equal("24h", body.GetProperty("time_frame").GetString());
+        Assert.False(body.TryGetProperty("from", out _));
+        Assert.False(body.TryGetProperty("to", out _));
     }
 
     [Theory]
