@@ -3,3 +3,6 @@
 dotnet_diagnostic.CA1707.severity = none
 # Test methods are named Method_Condition_Result without an Async suffix.
 dotnet_naming_rule.async_methods_end_with_async.severity = none
+# Substitutes for channels and connections are never disposed by the code under test.
+dotnet_diagnostic.CA2000.severity = none
+dotnet_diagnostic.CA2012.severity = none

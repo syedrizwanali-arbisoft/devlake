@@ -28,6 +28,7 @@ limitations under the License.
     <PackageReference Include="Dapper" />
     <PackageReference Include="dbup-mysql" />
     <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>
 
 </Project>

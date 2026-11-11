@@ -38,6 +38,30 @@ jobs:
     defaults:
       run:
         working-directory: integration-service
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      rabbitmq:
+        image: rabbitmq:4-management
+        env:
+          RABBITMQ_DEFAULT_USER: ci
+          RABBITMQ_DEFAULT_PASS: ci-password
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd="rabbitmq-diagnostics -q ping"
+          --health-interval=10s --health-timeout=10s --health-retries=12
+    env:
+      INTEGRATION_TEST_MYSQL: Server=127.0.0.1;Port=3306;User=root;Password=ci-root-password
+      INTEGRATION_TEST_RABBITMQ: host=127.0.0.1;port=5672;management=15672;user=ci;password=ci-password
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -193,9 +193,15 @@ public sealed class ScopeAuthorizationEndpointTests : IAsyncLifetime, IDisposabl
     }
 
     [MySqlFact]
-    public async Task HealthEndpointsStayOpen()
+    public async Task HealthEndpointsStayOpenToAnonymousCallers()
     {
+        var ready = await GetStatusAsync("/health/ready", bearer: null);
+
         Assert.Equal(HttpStatusCode.OK, await GetStatusAsync("/health/live", bearer: null));
-        Assert.Equal(HttpStatusCode.OK, await GetStatusAsync("/health/ready", bearer: null));
+        Assert.NotEqual(HttpStatusCode.Unauthorized, ready);
+        if (RabbitMqHarness.Settings is not null)
+        {
+            Assert.Equal(HttpStatusCode.OK, ready);
+        }
     }
 }

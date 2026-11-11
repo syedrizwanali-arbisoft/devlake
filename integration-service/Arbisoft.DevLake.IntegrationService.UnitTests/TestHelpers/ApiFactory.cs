@@ -24,10 +24,31 @@ namespace Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
 public sealed class ApiFactory : WebApplicationFactory<AuthController>
 {
     private readonly string _connectionString;
+    private readonly string _queueName = $"it.api.{Guid.NewGuid():N}";
 
     public ApiFactory(string connectionString)
     {
         _connectionString = connectionString;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing)
+        {
+            RabbitMqHarness.DeleteTopologyAsync(_queueName).GetAwaiter().GetResult();
+        }
+    }
+
+    /// <summary>Points the API at the test broker when one is configured; otherwise at placeholders, and readiness reports it unreachable.</summary>
+    private void UseRabbitMqSettings(IWebHostBuilder builder)
+    {
+        var broker = RabbitMqHarness.Settings;
+        builder.UseSetting("RabbitMq:HostName", broker?["host"] ?? "localhost");
+        builder.UseSetting("RabbitMq:Port", broker?["port"] ?? "5672");
+        builder.UseSetting("RabbitMq:UserName", broker?["user"] ?? "user");
+        builder.UseSetting("RabbitMq:Password", broker?["password"] ?? "pass");
+        builder.UseSetting("RabbitMq:RequestQueueName", _queueName);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -36,8 +57,7 @@ public sealed class ApiFactory : WebApplicationFactory<AuthController>
         builder.UseSetting("Security:EncryptionKey", SecurityTestData.NewEncryptionKey());
         builder.UseSetting("Security:Issuer", SecurityTestData.Issuer);
         builder.UseSetting("Security:Audience", SecurityTestData.Audience);
-        builder.UseSetting("RabbitMq:UserName", "user");
-        builder.UseSetting("RabbitMq:Password", "pass");
+        UseRabbitMqSettings(builder);
         builder.UseSetting("DevLake:ApiToken", "token");
         builder.UseSetting("Workstream:ApiToken", "token");
         builder.ConfigureServices(services => services.AddControllers().AddApplicationPart(typeof(ProtectedTestController).Assembly));

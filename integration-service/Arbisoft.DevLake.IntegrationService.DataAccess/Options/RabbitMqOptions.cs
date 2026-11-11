@@ -37,6 +37,30 @@ public sealed class RabbitMqOptions
     [Required]
     public string VirtualHost { get; init; } = "/";
 
+    /// <summary>Encrypt the connection to the broker. Turn this on for any broker that is not on localhost.</summary>
+    public bool UseTls { get; init; }
+
+    /// <summary>The name this service's connection shows in the broker's management UI.</summary>
+    [Required]
+    public string ConnectionName { get; init; } = "integration-service";
+
+    /// <summary>The queue stats requests wait in. Its dead-letter exchange and queue are named after it.</summary>
     [Required]
     public string RequestQueueName { get; init; } = "integration.stats-requests";
+
+    /// <summary>The most messages the queue holds. When it is full the broker rejects new publishes and the API answers 429.</summary>
+    [Range(2, int.MaxValue)]
+    public int QueueMaxLength { get; init; } = 10_000;
+
+    /// <summary>How long a message may wait before it expires into the dead-letter queue.</summary>
+    [Range(1, int.MaxValue)]
+    public int MessageTtlSeconds { get; init; } = 7200;
+
+    /// <summary>How many times a failing message is redelivered before the consumer moves it to the dead-letter queue.</summary>
+    [Range(1, 1000)]
+    public int DeliveryLimit { get; init; } = 5;
+
+    /// <summary>The most messages one receive call returns. This bounds the work in flight per run (the pull-based prefetch).</summary>
+    [Range(1, 1000)]
+    public int ReceiveBatchLimit { get; init; } = 10;
 }

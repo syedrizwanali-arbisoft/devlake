@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Options;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Persistence;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
@@ -37,6 +38,7 @@ public static class DependencyInjection
         AddValidatedOptions<WorkstreamOptions>(services, configuration, WorkstreamOptions.SectionName);
 
         AddPersistence(services);
+        AddMessaging(services);
         return services;
     }
 
@@ -63,6 +65,15 @@ public static class DependencyInjection
         // Runs first among the app's hosted services, so the schema exists before anything uses it.
         services.AddHostedService<DatabaseMigrationService>();
         services.AddHealthChecks().AddCheck<MySqlHealthCheck>("mysql", tags: ["ready"]);
+    }
+
+    private static void AddMessaging(IServiceCollection services)
+    {
+        // The connection is shared by the whole process; publishers and consumers open channels of their own on it.
+        services.AddSingleton<IRabbitMqConnection, RabbitMqConnection>();
+        services.AddSingleton<IRequestQueuePublisher, RequestQueuePublisher>();
+        services.AddSingleton<IRequestQueueConsumer, RequestQueueConsumer>();
+        services.AddHealthChecks().AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"]);
     }
 
     private static void AddValidatedOptions<TOptions>(IServiceCollection services, IConfiguration configuration, string sectionName)

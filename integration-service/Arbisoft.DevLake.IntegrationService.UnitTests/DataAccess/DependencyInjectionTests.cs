@@ -68,6 +68,19 @@ public class DependencyInjectionTests
         Assert.Throws<OptionsValidationException>(() => ValidateAll(provider));
     }
 
+    [Theory]
+    [InlineData("RabbitMq:QueueMaxLength", "1")]
+    [InlineData("RabbitMq:MessageTtlSeconds", "0")]
+    [InlineData("RabbitMq:DeliveryLimit", "0")]
+    [InlineData("RabbitMq:ReceiveBatchLimit", "0")]
+    public void AddDataAccess_OutOfRangeQueueSetting_FailsValidation(string key, string value)
+    {
+        var settings = new Dictionary<string, string?>(ValidSettings) { [key] = value };
+        using var provider = Build(settings);
+
+        Assert.Throws<OptionsValidationException>(() => ValidateAll(provider));
+    }
+
     private static void ValidateAll(IServiceProvider provider)
     {
         _ = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
