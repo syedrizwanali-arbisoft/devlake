@@ -1,0 +1,5 @@
+[*.cs]
+# Test names use Method_Condition_Result.
+dotnet_diagnostic.CA1707.severity = none
+# Test methods are named Method_Condition_Result without an Async suffix.
+dotnet_naming_rule.async_methods_end_with_async.severity = none

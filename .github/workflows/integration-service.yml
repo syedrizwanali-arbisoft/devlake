@@ -1,0 +1,68 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: integration-service
+
+on:
+  push:
+    branches: [ main, main-arbisoft ]
+    paths:
+      - 'integration-service/**'
+      - '.github/workflows/integration-service.yml'
+  pull_request:
+    paths:
+      - 'integration-service/**'
+      - '.github/workflows/integration-service.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build, format and unit tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: integration-service
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: integration-service/global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build with warnings as errors
+        run: dotnet build --no-restore -warnaserror
+
+      - name: Check formatting
+        run: dotnet format --no-restore --verify-no-changes
+
+      - name: Run unit tests
+        run: dotnet test --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Check for vulnerable packages
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then
+            echo "Vulnerable packages found"
+            exit 1
+          fi

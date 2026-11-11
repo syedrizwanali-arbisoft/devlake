@@ -52,5 +52,8 @@ header:
     - "config-ui/.yarn/**/*"
     - "config-ui/yarn.lock"
     - ".github/ISSUE_TEMPLATE/*.md"
+    - "integration-service/**/wwwroot/**"
+    - "integration-service/**/*.cshtml.css"
+    - "integration-service/*.sln"
 
   comment: on-failure
