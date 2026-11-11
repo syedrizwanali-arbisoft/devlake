@@ -36,6 +36,7 @@ import (
 	compliancescorecard "github.com/apache/incubator-devlake/server/api/compliance_scorecard"
 	"github.com/apache/incubator-devlake/server/api/domainlayer"
 	"github.com/apache/incubator-devlake/server/api/grafanausers"
+	"github.com/apache/incubator-devlake/server/api/integration"
 	"github.com/apache/incubator-devlake/server/api/pipelines"
 	"github.com/apache/incubator-devlake/server/api/plugininfo"
 	"github.com/apache/incubator-devlake/server/api/project"
@@ -102,6 +103,13 @@ func RegisterRouter(r *gin.Engine, basicRes context.BasicRes) {
 	// fork-owned native OIDC access directory
 	access.RegisterRoutes(r)
 	grafanausers.RegisterRoutes(r)
+
+	// integration service api (skeletons, behavior to be defined)
+	r.GET("/is_valid", integration.IsValid)
+	r.GET("/stats/:email/jira", integration.GetJiraStats)
+	r.GET("/stats/:email/github", integration.GetGithubStats)
+	r.GET("/stats/:email/ai_usage", integration.GetAiUsageStats)
+	r.GET("/stats/:email/ai_cost", integration.GetAiCostStats)
 
 	// user project mapping api
 	// admin-only: customer-admin sessions; API keys can't manage keys or project access
