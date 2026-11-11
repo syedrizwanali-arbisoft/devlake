@@ -17,12 +17,14 @@ using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Options;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Persistence;
 using Microsoft.Extensions.Options;
+using MySqlConnector;
 
 namespace Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 
 public sealed class RequestLogRepository : RepositoryBase, IRequestLogRepository
 {
-    private const string Columns = "id, clientRefId, correlationId, url, status, eventType, createdOn";
+    private const string Columns = "id, clientRefId, correlationId, url, status, eventType, createdOn, idempotencyKey";
+    private const string IdempotencyIndex = "UX_RequestLogs_idempotencyKey";
     private const string AttemptColumns = "id, requestLogId, responseJson, attemptStatus, failureError, attemptBy, attemptOn";
 
     public RequestLogRepository(IDbSession session, IOptions<DatabaseOptions> options)
@@ -33,10 +35,32 @@ public sealed class RequestLogRepository : RepositoryBase, IRequestLogRepository
     public Task<long> InsertAsync(RequestLog requestLog, CancellationToken cancellationToken)
     {
         return InsertAsync(
-            "INSERT INTO RequestLogs (clientRefId, correlationId, url, status, eventType, createdOn) " +
-            "VALUES (@ClientRefId, @CorrelationId, @Url, @Status, @EventType, @CreatedOn)",
+            "INSERT INTO RequestLogs (clientRefId, correlationId, url, status, eventType, createdOn, idempotencyKey) " +
+            "VALUES (@ClientRefId, @CorrelationId, @Url, @Status, @EventType, @CreatedOn, @IdempotencyKey)",
             requestLog,
             cancellationToken);
+    }
+
+    public async Task<long?> TryInsertAsync(RequestLog requestLog, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await InsertAsync(requestLog, cancellationToken);
+        }
+        catch (MySqlException exception) when (exception.ErrorCode == MySqlErrorCode.DuplicateKeyEntry && exception.Message.Contains(IdempotencyIndex, StringComparison.Ordinal))
+        {
+            return null;
+        }
+    }
+
+    public Task<RequestLog?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken)
+    {
+        return QuerySingleOrDefaultAsync<RequestLog>($"SELECT {Columns} FROM RequestLogs WHERE idempotencyKey = @idempotencyKey", new { idempotencyKey }, cancellationToken);
+    }
+
+    public async Task ReleaseIdempotencyKeyAsync(long requestLogId, CancellationToken cancellationToken)
+    {
+        await ExecuteAsync("UPDATE RequestLogs SET idempotencyKey = NULL WHERE id = @requestLogId", new { requestLogId }, cancellationToken);
     }
 
     public Task<long> InsertJsonAsync(RequestLogJson json, CancellationToken cancellationToken)

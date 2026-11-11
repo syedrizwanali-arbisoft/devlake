@@ -71,6 +71,28 @@ Stats requests wait in a durable RabbitMQ quorum queue (`RabbitMq:RequestQueueNa
 
 Failed, expired and unreadable messages go to `<queue>.dead` through the `<queue>.dlx` exchange. Inspect them in the RabbitMQ management UI (http://localhost:15672). To replay one, use the UI's "Move messages" shovel from the dead-letter queue back to the request queue.
 
+## Stats requests
+
+`GET /api/v1/engineers/{email}/stats?tf=24h` and `POST /api/v1/engineers/stats/batch` (body `{ "emails": [...], "timeFrame": "24h" }`, up to 20 emails) need the `stats:read` scope. Both are asynchronous: they log the request, queue it and return a `correlation_id` at once, and the result is posted later to the client's callback URL.
+
+- **Time frame:** a whole number and a case-sensitive unit: `h`, `d`, `w`, `M` (30 days) or `y` (365 days), for example `24h`, `1w`, `30d`, `11M`, `1y`. The longest is one year.
+- **Emails** are trimmed and lower-cased, and must be in an allowed domain. Raw emails are never written to logs or error responses.
+- **No callback URL:** when the client has no active outbound URL for the event type (`engineer-stats` or `engineer-stats-batch`), the request is logged as `Revoked - no callback URL`, nothing is queued, and the API answers 422 with that reason in `error`.
+- **Duplicates:** an identical request (same client, emails and time frame) inside the duplicate window returns the original acknowledgement. A unique key in the database is what prevents the duplicate, so concurrent identical requests also produce one. Revoked and failed requests never block a repeat.
+- **Queue problems:** 429 with `Retry-After` when the queue is full, 503 with `Retry-After` when the broker is unreachable. Nothing is recorded in either case.
+
+These settings can be changed without code changes:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `Requests:DuplicateWindowMinutes` | 15 | How long an identical request counts as a duplicate. Read on every request, so editing `appsettings.json` applies without a restart |
+| `Requests:AllowedEmailDomains` | `["arbisoft.com"]` | Domains whose emails are accepted |
+| `RateLimits:StatsPerMinute` | 100 | Single-email requests per client per minute |
+| `RateLimits:BatchPerMinute` | 20 | Batch requests per client per minute |
+| `RateLimits:PollPerMinute` | 100 | Status poll requests per client per minute |
+
+As with every setting, an environment variable overrides the file, for example `Requests__DuplicateWindowMinutes=5`.
+
 ## Build and test
 
 ```sh

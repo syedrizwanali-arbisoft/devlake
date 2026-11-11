@@ -21,16 +21,19 @@ namespace Arbisoft.DevLake.IntegrationService.API.Authorization;
 
 /// <summary>
 /// Runs after a token's signature, issuer, audience and expiry check out. It rejects the token when the Auth API never issued it
-/// (no AccessTokens row for its jti) or when it was revoked, so a revocation takes effect before the token expires.
+/// (no AccessTokens row for its jti), when it was revoked, or when its client has been deactivated, so a revocation or a deactivation takes
+/// effect before the token expires.
 /// </summary>
 public sealed class TokenRevocationValidator
 {
     private readonly IAccessTokenRepository _accessTokens;
+    private readonly IClientRepository _clients;
     private readonly ILogger<TokenRevocationValidator> _logger;
 
-    public TokenRevocationValidator(IAccessTokenRepository accessTokens, ILogger<TokenRevocationValidator> logger)
+    public TokenRevocationValidator(IAccessTokenRepository accessTokens, IClientRepository clients, ILogger<TokenRevocationValidator> logger)
     {
         _accessTokens = accessTokens;
+        _clients = clients;
         _logger = logger;
     }
 
@@ -53,6 +56,11 @@ public sealed class TokenRevocationValidator
         {
             _logger.LogInformation("Rejected revoked token {Jti}", jti);
             context.Fail("The token has been revoked.");
+        }
+        else if (await _clients.GetByIdAsync(stored.ClientRefId, context.HttpContext.RequestAborted) is not { IsActive: true })
+        {
+            _logger.LogInformation("Rejected token {Jti} of a client that is no longer active", jti);
+            context.Fail("The client is not active.");
         }
     }
 }

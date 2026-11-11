@@ -25,4 +25,5 @@ public sealed class RequestLog
     public string Status { get; init; } = string.Empty;
     public string EventType { get; init; } = string.Empty;
     public DateTimeOffset CreatedOn { get; init; }
+    public string? IdempotencyKey { get; init; }
 }

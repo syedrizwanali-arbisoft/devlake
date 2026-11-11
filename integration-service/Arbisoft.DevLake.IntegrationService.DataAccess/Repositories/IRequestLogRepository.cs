@@ -22,6 +22,21 @@ public interface IRequestLogRepository
 {
     Task<long> InsertAsync(RequestLog requestLog, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Inserts a request that carries an idempotency key. Returns null, and inserts nothing, when another request already holds that key,
+    /// which is how the database stops two identical requests racing past an application-level check.
+    /// </summary>
+    Task<long?> TryInsertAsync(RequestLog requestLog, CancellationToken cancellationToken);
+
+    /// <summary>The request that currently holds an idempotency key, or null.</summary>
+    Task<RequestLog?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Frees the idempotency key held by one specific request so an identical request can be queued again. It targets the row, not the key,
+    /// so it can never clear a newer request that has since taken the key.
+    /// </summary>
+    Task ReleaseIdempotencyKeyAsync(long requestLogId, CancellationToken cancellationToken);
+
     Task<long> InsertJsonAsync(RequestLogJson json, CancellationToken cancellationToken);
 
     Task<RequestLog?> GetByCorrelationIdAsync(string correlationId, CancellationToken cancellationToken);

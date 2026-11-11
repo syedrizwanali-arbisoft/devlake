@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,6 +22,7 @@ namespace Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
 
 /// <summary>Endpoints that exist only in tests, to exercise authentication and scope checks before real protected endpoints exist.</summary>
 [ApiController]
+[ApiVersionNeutral]
 public sealed class ProtectedTestController : ControllerBase
 {
     [HttpGet("/test/stats")]

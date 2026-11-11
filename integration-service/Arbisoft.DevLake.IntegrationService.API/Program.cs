@@ -15,8 +15,10 @@
 
 using Arbisoft.DevLake.IntegrationService.API.Authorization;
 using Arbisoft.DevLake.IntegrationService.API.Middleware;
+using Arbisoft.DevLake.IntegrationService.API.RateLimiting;
 using Arbisoft.DevLake.IntegrationService.Business;
 using Arbisoft.DevLake.IntegrationService.DataAccess;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 
@@ -39,13 +41,19 @@ builder.Services.AddProblemDetails(options =>
     options.CustomizeProblemDetails = context => context.ProblemDetails.Extensions["correlationId"] = context.HttpContext.TraceIdentifier);
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddApiAuthentication();
+builder.Services.AddRateLimiting(builder.Configuration);
+builder.Services.AddApiVersioning(options =>
+{
+    options.ApiVersionReader = new UrlSegmentApiVersionReader();
+    options.ReportApiVersions = true;
+}).AddMvc();
 builder.Services.AddHealthChecks();
 builder.Services.AddDataAccess(builder.Configuration);
 builder.Services.AddBusiness(builder.Configuration);
 
 var app = builder.Build();
 
-// Order is behaviour: exception handler, correlation ID, authentication, authorization, then (a later ticket) the rate limiter.
+// Order is behaviour: exception handler, correlation ID, authentication, authorization, rate limiter.
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -58,6 +66,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 

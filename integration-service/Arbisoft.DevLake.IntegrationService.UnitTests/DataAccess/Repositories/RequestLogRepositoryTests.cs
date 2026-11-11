@@ -16,6 +16,7 @@
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
+using Microsoft.Extensions.DependencyInjection;
 using MySqlConnector;
 
 namespace Arbisoft.DevLake.IntegrationService.UnitTests.DataAccess.Repositories;
@@ -103,6 +104,79 @@ public class RequestLogRepositoryTests : RepositoryTestBase
         Assert.Equal(wanted, Assert.Single(page.Items).Id);
         Assert.Equal(1, page.TotalCount);
         Assert.True(all.TotalCount >= 3);
+    }
+
+    private static RequestLog WithKey(long clientRefId, string? key, string status = RequestStatus.Received) => new()
+    {
+        ClientRefId = clientRefId,
+        CorrelationId = Guid.NewGuid().ToString("D"),
+        Url = "/x",
+        Status = status,
+        EventType = "engineer-stats",
+        CreatedOn = Instant,
+        IdempotencyKey = key
+    };
+
+    [MySqlFact]
+    public async Task TryInsert_AcceptsTheFirstRequestWithAKey_AndRefusesASecondWithoutThrowing()
+    {
+        var client = await InsertClientAsync();
+        var key = Guid.NewGuid().ToString("N");
+
+        var first = await Repository.TryInsertAsync(WithKey(client.Id, key), CancellationToken.None);
+        var second = await Repository.TryInsertAsync(WithKey(client.Id, key), CancellationToken.None);
+
+        Assert.NotNull(first);
+        Assert.Null(second);
+        Assert.Equal(first, (await Repository.GetByIdempotencyKeyAsync(key, CancellationToken.None))!.Id);
+    }
+
+    [MySqlFact]
+    public async Task TryInsert_ManyRequestsWithoutAKey_NeverCollide()
+    {
+        var client = await InsertClientAsync();
+
+        Assert.NotNull(await Repository.TryInsertAsync(WithKey(client.Id, null), CancellationToken.None));
+        Assert.NotNull(await Repository.TryInsertAsync(WithKey(client.Id, null), CancellationToken.None));
+        await Repository.InsertAsync(WithKey(client.Id, null, RequestStatus.RevokedNoCallbackUrl), CancellationToken.None);
+    }
+
+    [MySqlFact]
+    public async Task TryInsert_ARacingPair_LetsExactlyOneWin()
+    {
+        var client = await InsertClientAsync();
+        var key = Guid.NewGuid().ToString("N");
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(async _ =>
+        {
+            await using var scope = NewScope();
+            return await scope.ServiceProvider.GetRequiredService<IRequestLogRepository>().TryInsertAsync(WithKey(client.Id, key), CancellationToken.None);
+        }));
+
+        Assert.Single(results, id => id is not null);
+        Assert.Equal(7, results.Count(id => id is null));
+    }
+
+    [MySqlFact]
+    public async Task ReleaseIdempotencyKey_FreesTheKeyOfThatRowOnly_SoARepeatCanTakeIt()
+    {
+        var client = await InsertClientAsync();
+        var key = Guid.NewGuid().ToString("N");
+        var old = (await Repository.TryInsertAsync(WithKey(client.Id, key), CancellationToken.None))!.Value;
+
+        await Repository.ReleaseIdempotencyKeyAsync(old, CancellationToken.None);
+        var replacement = await Repository.TryInsertAsync(WithKey(client.Id, key), CancellationToken.None);
+        await Repository.ReleaseIdempotencyKeyAsync(old, CancellationToken.None);
+
+        Assert.NotNull(replacement);
+        Assert.Null((await Repository.GetByIdAsync(old, CancellationToken.None))!.IdempotencyKey);
+        Assert.Equal(replacement, (await Repository.GetByIdempotencyKeyAsync(key, CancellationToken.None))!.Id);
+    }
+
+    [MySqlFact]
+    public async Task GetByIdempotencyKey_UnknownKey_ReturnsNull()
+    {
+        Assert.Null(await Repository.GetByIdempotencyKeyAsync(Guid.NewGuid().ToString("N"), CancellationToken.None));
     }
 
     [MySqlFact]

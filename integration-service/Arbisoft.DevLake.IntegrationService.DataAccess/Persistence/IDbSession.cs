@@ -32,4 +32,7 @@ public interface IDbSession : IAsyncDisposable
     Task BeginTransactionAsync(CancellationToken cancellationToken);
 
     Task CommitAsync(CancellationToken cancellationToken);
+
+    /// <summary>Undoes everything since <see cref="BeginTransactionAsync"/> and leaves the session usable for further work.</summary>
+    Task RollbackAsync(CancellationToken cancellationToken);
 }

@@ -76,9 +76,10 @@ public class MigrationTests
             .Where(name => name.EndsWith(".sql", StringComparison.Ordinal))
             .ToList();
 
-        Assert.Equal(3, names.Count);
+        Assert.Equal(4, names.Count);
         Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.001_InitialSchema.sql", StringComparison.Ordinal));
         Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.002_SecretStore.sql", StringComparison.Ordinal));
         Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.003_SeedScopes.sql", StringComparison.Ordinal));
+        Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.004_RequestIdempotency.sql", StringComparison.Ordinal));
     }
 }

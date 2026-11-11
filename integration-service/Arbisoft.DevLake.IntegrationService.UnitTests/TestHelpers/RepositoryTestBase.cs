@@ -48,6 +48,9 @@ public abstract class RepositoryTestBase : IAsyncLifetime
         await _scope.DisposeAsync();
     }
 
+    /// <summary>A scope of its own, for tests that need several independent units of work at once, such as a race.</summary>
+    protected AsyncServiceScope NewScope() => _fixture.Services!.CreateAsyncScope();
+
     protected T Get<T>()
         where T : notnull
     {

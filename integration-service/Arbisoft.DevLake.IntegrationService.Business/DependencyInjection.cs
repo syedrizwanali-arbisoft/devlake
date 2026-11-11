@@ -15,6 +15,7 @@
 
 using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -32,6 +33,11 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<SecurityOptions>, SecurityOptionsValidator>();
 
+        services.AddOptions<RequestsOptions>()
+            .Bind(configuration.GetSection(RequestsOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddMemoryCache();
         services.AddSingleton<ISecretEncryptor, SecretEncryptor>();
         services.AddSingleton<IClientSecretHasher, ClientSecretHasher>();
@@ -39,6 +45,9 @@ public static class DependencyInjection
         services.AddScoped<ISigningKeyProvider, SigningKeyProvider>();
         services.AddScoped<ITokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IIdempotencyCheck, IdempotencyCheck>();
+        services.AddScoped<IRequestService, RequestService>();
+        services.AddScoped<IRequestHandler, RequestHandler>();
         return services;
     }
 }

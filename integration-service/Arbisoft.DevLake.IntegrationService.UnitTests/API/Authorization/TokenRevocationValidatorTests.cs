@@ -29,11 +29,13 @@ namespace Arbisoft.DevLake.IntegrationService.UnitTests.API.Authorization;
 public class TokenRevocationValidatorTests
 {
     private readonly IAccessTokenRepository _accessTokens = Substitute.For<IAccessTokenRepository>();
+    private readonly IClientRepository _clients = Substitute.For<IClientRepository>();
     private readonly TokenRevocationValidator _validator;
 
     public TokenRevocationValidatorTests()
     {
-        _validator = new TokenRevocationValidator(_accessTokens, NullLogger<TokenRevocationValidator>.Instance);
+        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new Client { Id = 1, IsActive = true });
+        _validator = new TokenRevocationValidator(_accessTokens, _clients, NullLogger<TokenRevocationValidator>.Instance);
     }
 
     private static TokenValidatedContext ContextFor(string? jti)
@@ -57,12 +59,35 @@ public class TokenRevocationValidatorTests
     [Fact]
     public async Task IssuedAndNotRevoked_Passes()
     {
-        _accessTokens.GetByJtiAsync("jti-1", Arg.Any<CancellationToken>()).Returns(new AccessToken { Jti = "jti-1" });
+        _accessTokens.GetByJtiAsync("jti-1", Arg.Any<CancellationToken>()).Returns(new AccessToken { Jti = "jti-1", ClientRefId = 1 });
         var context = ContextFor("jti-1");
 
         await _validator.ValidateAsync(context);
 
         Assert.False(context.Result?.Failure is not null);
+    }
+
+    [Fact]
+    public async Task OfAClientThatIsNoLongerActive_IsRejected()
+    {
+        _clients.GetByIdAsync(2, Arg.Any<CancellationToken>()).Returns(new Client { Id = 2, IsActive = false });
+        _accessTokens.GetByJtiAsync("jti-2", Arg.Any<CancellationToken>()).Returns(new AccessToken { Jti = "jti-2", ClientRefId = 2 });
+        var context = ContextFor("jti-2");
+
+        await _validator.ValidateAsync(context);
+
+        Assert.Contains("not active", context.Result!.Failure!.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OfAClientThatNoLongerExists_IsRejected()
+    {
+        _accessTokens.GetByJtiAsync("jti-3", Arg.Any<CancellationToken>()).Returns(new AccessToken { Jti = "jti-3", ClientRefId = 99 });
+        var context = ContextFor("jti-3");
+
+        await _validator.ValidateAsync(context);
+
+        Assert.NotNull(context.Result!.Failure);
     }
 
     [Fact]

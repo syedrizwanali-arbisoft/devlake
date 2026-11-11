@@ -141,6 +141,58 @@ public sealed class RabbitMqHarness : IAsyncDisposable
         throw new TimeoutException("The condition was not met in time.");
     }
 
+    /// <summary>True when the broker has a queue of this name.</summary>
+    public static async Task<bool> QueueExistsAsync(string queueName)
+    {
+        var settings = Settings ?? throw new InvalidOperationException($"{EnvironmentVariable} is not set.");
+        var factory = new ConnectionFactory
+        {
+            HostName = settings["host"],
+            Port = int.Parse(settings["port"], System.Globalization.CultureInfo.InvariantCulture),
+            UserName = settings["user"],
+            Password = settings["password"]
+        };
+        await using var connection = await factory.CreateConnectionAsync();
+        try
+        {
+            await using var channel = await connection.CreateChannelAsync();
+            await channel.QueueDeclarePassiveAsync(queueName);
+            return true;
+        }
+        catch (RabbitMQ.Client.Exceptions.OperationInterruptedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Takes every message off a queue and returns what was in them. Opens its own short-lived connection.</summary>
+    public static async Task<IReadOnlyList<DrainedMessage>> DrainAsync(string queueName)
+    {
+        var settings = Settings ?? throw new InvalidOperationException($"{EnvironmentVariable} is not set.");
+        var factory = new ConnectionFactory
+        {
+            HostName = settings["host"],
+            Port = int.Parse(settings["port"], System.Globalization.CultureInfo.InvariantCulture),
+            UserName = settings["user"],
+            Password = settings["password"]
+        };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        var messages = new List<DrainedMessage>();
+        while (await channel.BasicGetAsync(queueName, autoAck: true) is { } result)
+        {
+            var properties = result.BasicProperties;
+            messages.Add(new DrainedMessage(
+                properties.CorrelationId ?? string.Empty,
+                properties.Type ?? string.Empty,
+                properties.Persistent,
+                properties.Headers is not null && properties.Headers.TryGetValue(QueueConstants.SchemaVersionHeader, out var version) ? Convert.ToInt32(version, System.Globalization.CultureInfo.InvariantCulture) : 0,
+                Encoding.UTF8.GetString(result.Body.Span)));
+        }
+
+        return messages;
+    }
+
     /// <summary>Deletes a test queue and its dead-letter queue and exchange. Does nothing when no test broker is configured or reachable.</summary>
     public static async Task DeleteTopologyAsync(string queueName)
     {
@@ -191,3 +243,6 @@ public sealed class RabbitMqHarness : IAsyncDisposable
             .ToDictionary(parts => parts[0].Trim(), parts => parts[1].Trim(), StringComparer.OrdinalIgnoreCase);
     }
 }
+
+/// <summary>A message taken off a queue by <see cref="RabbitMqHarness.DrainAsync"/>.</summary>
+public sealed record DrainedMessage(string CorrelationId, string EventType, bool Persistent, int SchemaVersion, string Body);

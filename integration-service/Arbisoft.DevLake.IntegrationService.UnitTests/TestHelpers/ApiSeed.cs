@@ -110,6 +110,80 @@ public sealed class ApiSeed
         return new SeededClient(clientId, clientRefId, secretId);
     }
 
+    /// <summary>Gives a client an active outbound config with an active callback URL for each event type, as the admin portal will.</summary>
+    public async Task SeedCallbackAsync(SeededClient client, params string[] eventTypes)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var configs = scope.ServiceProvider.GetRequiredService<IClientConfigRepository>();
+        var now = DateTimeOffset.UtcNow;
+        var configId = await configs.InsertAsync(
+            new ClientConfig
+            {
+                ClientRefId = client.ClientRefId,
+                AuthType = ClientConfigAuthType.OAuth2ClientCredentials,
+                BaseUrl = "https://sophia.example.test",
+                MaxAttempts = 3,
+                IsActive = true,
+                CreatedOn = now,
+                CreatedBy = "tests"
+            },
+            CancellationToken.None);
+        foreach (var eventType in eventTypes)
+        {
+            await configs.InsertOutboundUrlAsync(
+                new ClientConfigOutboundUrl { ClientConfigId = configId, EventType = eventType, Path = "/api/v1/devlake/callback/", Method = "POST", IsActive = true, CreatedOn = now, CreatedBy = "tests" },
+                CancellationToken.None);
+        }
+    }
+
+    /// <summary>Runs a statement straight on the test database, for setting up a state a test needs, such as an old request.</summary>
+    public async Task ExecuteAsync(string sql, object? parameters = null)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        await using var connection = await scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>().OpenConnectionAsync(CancellationToken.None);
+        await connection.ExecuteAsync(sql, parameters);
+    }
+
+    public async Task<RequestLog?> LogAsync(string correlationId)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IRequestLogRepository>().GetByCorrelationIdAsync(correlationId, CancellationToken.None);
+    }
+
+    public async Task<string?> LogJsonAsync(long requestLogId)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IRequestLogRepository>().GetJsonAsync(requestLogId, CancellationToken.None);
+    }
+
+    public async Task<IReadOnlyList<RequestLog>> LogsForAsync(SeededClient client)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var page = await scope.ServiceProvider.GetRequiredService<IRequestLogRepository>().ListAsync(new RequestLogFilter(client.ClientRefId), 1, 100, CancellationToken.None);
+        return page.Items;
+    }
+
+    public async Task DeactivateClientAsync(SeededClient client)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IClientRepository>();
+        var current = (await clients.GetByIdAsync(client.ClientRefId, CancellationToken.None))!;
+        await clients.UpdateAsync(
+            new Client
+            {
+                Id = current.Id,
+                ClientId = current.ClientId,
+                Name = current.Name,
+                IsActive = false,
+                AccessTokenLifetimeSeconds = current.AccessTokenLifetimeSeconds,
+                CreatedOn = current.CreatedOn,
+                CreatedBy = current.CreatedBy,
+                ModifiedOn = DateTimeOffset.UtcNow,
+                ModifiedBy = "tests"
+            },
+            CancellationToken.None);
+    }
+
     /// <summary>Gets a real token from POST /auth/token/.</summary>
     public static async Task<string> RequestTokenAsync(HttpClient http, SeededClient client)
     {

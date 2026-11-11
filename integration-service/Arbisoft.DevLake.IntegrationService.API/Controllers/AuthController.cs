@@ -15,6 +15,7 @@
 
 using Arbisoft.DevLake.IntegrationService.Business.Dtos.Auth;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Net.Http.Headers;
@@ -23,6 +24,7 @@ namespace Arbisoft.DevLake.IntegrationService.API.Controllers;
 
 /// <summary>The OAuth2 client credentials endpoint. Errors use the RFC 6749 body, as OAuth client libraries expect.</summary>
 [ApiController]
+[ApiVersionNeutral]
 [AllowAnonymous]
 public sealed class AuthController : ControllerBase
 {

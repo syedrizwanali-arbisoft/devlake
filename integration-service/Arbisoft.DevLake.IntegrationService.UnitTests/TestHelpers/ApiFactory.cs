@@ -24,19 +24,23 @@ namespace Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
 public sealed class ApiFactory : WebApplicationFactory<AuthController>
 {
     private readonly string _connectionString;
-    private readonly string _queueName = $"it.api.{Guid.NewGuid():N}";
+    private readonly IReadOnlyDictionary<string, string> _extraSettings;
 
-    public ApiFactory(string connectionString)
+    public ApiFactory(string connectionString, IReadOnlyDictionary<string, string>? extraSettings = null)
     {
         _connectionString = connectionString;
+        _extraSettings = extraSettings ?? new Dictionary<string, string>();
     }
+
+    /// <summary>The request queue this API instance uses. It is unique to the instance and deleted when the instance is disposed.</summary>
+    public string QueueName { get; } = $"it.api.{Guid.NewGuid():N}";
 
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
         if (disposing)
         {
-            RabbitMqHarness.DeleteTopologyAsync(_queueName).GetAwaiter().GetResult();
+            RabbitMqHarness.DeleteTopologyAsync(QueueName).GetAwaiter().GetResult();
         }
     }
 
@@ -48,7 +52,7 @@ public sealed class ApiFactory : WebApplicationFactory<AuthController>
         builder.UseSetting("RabbitMq:Port", broker?["port"] ?? "5672");
         builder.UseSetting("RabbitMq:UserName", broker?["user"] ?? "user");
         builder.UseSetting("RabbitMq:Password", broker?["password"] ?? "pass");
-        builder.UseSetting("RabbitMq:RequestQueueName", _queueName);
+        builder.UseSetting("RabbitMq:RequestQueueName", QueueName);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -61,5 +65,9 @@ public sealed class ApiFactory : WebApplicationFactory<AuthController>
         builder.UseSetting("DevLake:ApiToken", "token");
         builder.UseSetting("Workstream:ApiToken", "token");
         builder.ConfigureServices(services => services.AddControllers().AddApplicationPart(typeof(ProtectedTestController).Assembly));
+        foreach (var (key, value) in _extraSettings)
+        {
+            builder.UseSetting(key, value);
+        }
     }
 }

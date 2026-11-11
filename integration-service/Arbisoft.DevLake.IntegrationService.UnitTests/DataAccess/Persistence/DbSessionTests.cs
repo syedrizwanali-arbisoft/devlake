@@ -32,7 +32,7 @@ public class DbSessionTests : RepositoryTestBase
         _fixture = fixture;
     }
 
-    private static Scope NewScope() => new() { Name = Guid.NewGuid().ToString("N"), CreatedOn = Instant };
+    private static Scope NewScopeRow() => new() { Name = Guid.NewGuid().ToString("N"), CreatedOn = Instant };
 
     [MySqlFact]
     public async Task Commit_KeepsTheWrites_AndDisposingWithoutCommitRollsThemBack()
@@ -44,10 +44,10 @@ public class DbSessionTests : RepositoryTestBase
             var session = scope.ServiceProvider.GetRequiredService<IDbSession>();
             var repository = scope.ServiceProvider.GetRequiredService<IScopeRepository>();
             await session.BeginTransactionAsync(CancellationToken.None);
-            committed = await repository.InsertAsync(NewScope(), CancellationToken.None);
+            committed = await repository.InsertAsync(NewScopeRow(), CancellationToken.None);
             await session.CommitAsync(CancellationToken.None);
             await session.BeginTransactionAsync(CancellationToken.None);
-            abandoned = await repository.InsertAsync(NewScope(), CancellationToken.None);
+            abandoned = await repository.InsertAsync(NewScopeRow(), CancellationToken.None);
         }
 
         var reader = Get<IScopeRepository>();

@@ -59,6 +59,18 @@ public sealed class DbSession : IDbSession
         Transaction = null;
     }
 
+    public async Task RollbackAsync(CancellationToken cancellationToken)
+    {
+        if (Transaction is null)
+        {
+            throw new InvalidOperationException("There is no open transaction to roll back.");
+        }
+
+        await Transaction.RollbackAsync(cancellationToken);
+        await Transaction.DisposeAsync();
+        Transaction = null;
+    }
+
     /// <summary>Disposing with an open transaction rolls it back.</summary>
     public async ValueTask DisposeAsync()
     {
