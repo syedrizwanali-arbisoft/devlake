@@ -129,6 +129,29 @@ Some data limits apply:
 
 Stats requests go to the durable queue `RabbitMq:RequestQueue` as persistent messages. The processing job takes them in batches and acknowledges each one only after it is handled. A message that fails stays queued for the next run. If it fails again, it moves to `<RequestQueue>.failed`, where it stays for inspection or replay.
 
+## Try it end to end locally
+
+`dev/` runs the API and admin portal on this machine, next to stand-ins for Workstream and Sophia (`dev/stubs.py`), so every flow can be tried without the real systems. It reads its settings and secrets from `.env`.
+
+```sh
+dev/run-local.sh start          # API on :5099, admin portal on :5098, stubs on :5097
+python3 dev/seed_local.py .env ../.env   # once: scopes, signing key, the sophia-local and devlake-local clients, Sophia's callback
+dev/run-local.sh stop
+```
+
+`seed_local.py` works through the admin portal like an admin, and is safe to run again. It saves each new client secret to the given `.env` file: `SOPHIA_CLIENT_*` here, and DevLake's `INTEGRATION_SERVICE_*` in the repository root's `.env`. Before the first start, set these in `.env`:
+
+| Setting | Purpose |
+|---|---|
+| `SECURITY_ENCRYPTION_KEY` | Base64 of 32 random bytes |
+| `ADMIN_USERNAME` | Admin portal sign-in |
+| `ADMIN_PASSWORD_HASH` | From `hash-password`, in single quotes |
+| `WORKSTREAM_TOKEN` | The Workstream stub's bearer token |
+| `SOPHIA_OUTBOUND_CLIENT_ID`, `SOPHIA_OUTBOUND_CLIENT_SECRET` | The credentials the Sophia stub accepts |
+| `DEVLAKE_API_TOKEN` | A DevLake API key with the allowed path `^/(is_valid|stats/.+)$` |
+
+`GET http://127.0.0.1:5097/sophia/callbacks` shows every callback the Sophia stub received.
+
 ## Configuration
 
 Secrets come from environment variables, never from `appsettings.json`.
