@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Arbisoft.DevLake.IntegrationService.API.Authorization;
 using Arbisoft.DevLake.IntegrationService.API.Middleware;
 using Arbisoft.DevLake.IntegrationService.Business;
 using Arbisoft.DevLake.IntegrationService.DataAccess;
@@ -34,16 +35,19 @@ builder.Host.UseDefaultServiceProvider(options =>
 });
 
 builder.Services.AddControllers();
-builder.Services.AddProblemDetails();
+builder.Services.AddProblemDetails(options =>
+    options.CustomizeProblemDetails = context => context.ProblemDetails.Extensions["correlationId"] = context.HttpContext.TraceIdentifier);
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddApiAuthentication();
 builder.Services.AddHealthChecks();
 builder.Services.AddDataAccess(builder.Configuration);
 builder.Services.AddBusiness(builder.Configuration);
 
 var app = builder.Build();
 
-// Order is behaviour: exception handler, correlation ID, then (added by later tickets) authentication, authorization, rate limiter.
+// Order is behaviour: exception handler, correlation ID, authentication, authorization, then (a later ticket) the rate limiter.
 app.UseExceptionHandler();
+app.UseStatusCodePages();
 app.UseMiddleware<CorrelationIdMiddleware>();
 
 if (!app.Environment.IsDevelopment())
@@ -52,11 +56,14 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapControllers();
 
 // Liveness checks the process only; readiness gets the database and broker checks as they are added.
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
 app.Run();
 

@@ -38,10 +38,10 @@ public sealed class AuthController : ControllerBase
 
     /// <summary>Exchanges a Client ID and secret (HTTP Basic) for a bearer token.</summary>
     [HttpPost("/auth/token/")]
-    [Consumes("application/x-www-form-urlencoded")]
     [ProducesResponseType<TokenResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<OAuthErrorResponse>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<OAuthErrorResponse>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<OAuthErrorResponse>(StatusCodes.Status415UnsupportedMediaType)]
     public async Task<IActionResult> TokenAsync([FromForm(Name = "grant_type")] string? grantType, CancellationToken cancellationToken)
     {
         Response.Headers.CacheControl = "no-store";
@@ -50,6 +50,11 @@ public sealed class AuthController : ControllerBase
         if (!BasicAuthorizationHeader.TryParse(Request.Headers.Authorization, out var clientId, out var clientSecret))
         {
             return InvalidClient();
+        }
+
+        if (!Request.HasFormContentType)
+        {
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType, new OAuthErrorResponse(AuthConstants.InvalidRequest, "The Content-Type must be application/x-www-form-urlencoded."));
         }
 
         if (string.IsNullOrEmpty(grantType))

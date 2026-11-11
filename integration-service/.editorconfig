@@ -69,3 +69,4 @@ dotnet_diagnostic.CA2254.severity = error
 dotnet_diagnostic.CA2007.severity = none
 
 dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none

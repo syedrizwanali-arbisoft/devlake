@@ -19,8 +19,6 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Arbisoft.DevLake.IntegrationService.Business.Security;
-using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,13 +31,12 @@ namespace Arbisoft.DevLake.IntegrationService.UnitTests.API;
 [Collection(MySqlTestGroup.Name)]
 public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
 {
-    private const string Secret = "correct-horse-battery-staple";
+    private const string Secret = ApiSeed.Secret;
 
     private readonly MySqlDatabaseFixture _database;
     private ApiFactory? _factory;
     private HttpClient? _http;
-    private RsaKeyPair? _keyPair;
-    private string _kid = string.Empty;
+    private ApiSeed? _seed;
 
     public AuthEndpointTests(MySqlDatabaseFixture database)
     {
@@ -55,7 +52,8 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
 
         _factory = new ApiFactory(_database.DatabaseConnectionString);
         _http = _factory.CreateClient();
-        await SeedSigningKeyAsync();
+        _seed = new ApiSeed(_factory);
+        await _seed.SeedSigningKeyAsync();
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -64,57 +62,6 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     {
         _http?.Dispose();
         _factory?.Dispose();
-    }
-
-    private async Task SeedSigningKeyAsync()
-    {
-        _keyPair = RsaKeyPair.Generate();
-        _kid = $"kid-{Guid.NewGuid():N}";
-        await using var scope = _factory!.Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<ISecretStore>().SaveAsync($"ref-{_kid}", _keyPair.PrivateKeyPem, CancellationToken.None);
-        await scope.ServiceProvider.GetRequiredService<ISigningKeyRepository>().InsertAsync(
-            new SigningKey
-            {
-                Kid = _kid,
-                Algorithm = RsaKeyPair.Algorithm,
-                PublicKey = _keyPair.PublicKeyPem,
-                PrivateKeyRef = $"ref-{_kid}",
-                ActivatedOn = DateTimeOffset.UtcNow.AddSeconds(-5),
-                CreatedOn = DateTimeOffset.UtcNow
-            },
-            CancellationToken.None);
-    }
-
-    private async Task<(string ClientId, long ClientRefId, long SecretId)> SeedClientAsync(bool active = true, string[]? scopes = null)
-    {
-        await using var scope = _factory!.Services.CreateAsyncScope();
-        var clients = scope.ServiceProvider.GetRequiredService<IClientRepository>();
-        var scopeRepository = scope.ServiceProvider.GetRequiredService<IScopeRepository>();
-        var now = DateTimeOffset.UtcNow;
-
-        var clientId = $"client-{Guid.NewGuid():N}";
-        var clientRefId = await clients.InsertAsync(
-            new Client { ClientId = clientId, Name = "Test", IsActive = active, AccessTokenLifetimeSeconds = 900, CreatedOn = now, CreatedBy = "tests" },
-            CancellationToken.None);
-        var secretId = await clients.InsertSecretAsync(
-            new ClientSecret
-            {
-                ClientRefId = clientRefId,
-                Secret = scope.ServiceProvider.GetRequiredService<IClientSecretHasher>().Hash(Secret),
-                CreatedOn = now,
-                CreatedBy = "tests"
-            },
-            CancellationToken.None);
-
-        var scopeIds = new List<long>();
-        foreach (var name in scopes ?? ["stats:read", "projects:fetch"])
-        {
-            var found = await scopeRepository.GetByNameAsync(name, CancellationToken.None);
-            scopeIds.Add(found?.Id ?? await scopeRepository.InsertAsync(new Scope { Name = name, CreatedOn = now }, CancellationToken.None));
-        }
-
-        await clients.ReplaceScopesAsync(clientRefId, scopeIds, "tests", now, CancellationToken.None);
-        return (clientId, clientRefId, secretId);
     }
 
     private async Task<HttpResponseMessage> PostAsync(string path, string? credentials, string? grantType = "client_credentials")
@@ -133,7 +80,7 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task Token_GoodCredentials_ReturnsAVerifiableTokenAndRecordsIt()
     {
-        var (clientId, clientRefId, secretId) = await SeedClientAsync();
+        var (clientId, clientRefId, secretId) = await _seed!.SeedClientAsync();
 
         var response = await PostAsync("/auth/token/", $"{clientId}:{Secret}");
 
@@ -146,16 +93,16 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
 
         var accessToken = body.GetProperty("access_token").GetString()!;
         using var rsa = RSA.Create();
-        rsa.ImportFromPem(_keyPair!.PublicKeyPem);
+        rsa.ImportFromPem(_seed!.KeyPair.PublicKeyPem);
         var validation = await new JsonWebTokenHandler().ValidateTokenAsync(accessToken, new TokenValidationParameters
         {
             ValidIssuer = SecurityTestData.Issuer,
             ValidAudience = SecurityTestData.Audience,
-            IssuerSigningKey = new RsaSecurityKey(rsa.ExportParameters(false)) { KeyId = _kid }
+            IssuerSigningKey = new RsaSecurityKey(rsa.ExportParameters(false)) { KeyId = _seed.Kid }
         });
         Assert.True(validation.IsValid);
         var jwt = (JsonWebToken)validation.SecurityToken;
-        Assert.Equal(_kid, jwt.Kid);
+        Assert.Equal(_seed.Kid, jwt.Kid);
         Assert.Equal(clientId, jwt.GetClaim("client_id").Value);
 
         await using var scope = _factory!.Services.CreateAsyncScope();
@@ -173,7 +120,7 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task Token_RouteWorksWithAndWithoutTheTrailingSlash()
     {
-        var (clientId, _, _) = await SeedClientAsync();
+        var (clientId, _, _) = await _seed!.SeedClientAsync();
 
         Assert.Equal(HttpStatusCode.OK, (await PostAsync("/auth/token", $"{clientId}:{Secret}")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await PostAsync("/auth/token/", $"{clientId}:{Secret}")).StatusCode);
@@ -182,7 +129,7 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task Token_ClientWithNoScopes_GetsAnEmptyScope()
     {
-        var (clientId, _, _) = await SeedClientAsync(scopes: []);
+        var (clientId, _, _) = await _seed!.SeedClientAsync(scopes: []);
 
         var body = await (await PostAsync("/auth/token/", $"{clientId}:{Secret}")).Content.ReadFromJsonAsync<JsonElement>();
 
@@ -192,8 +139,8 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task Token_WrongSecret_UnknownClientAndInactiveClient_AllGetTheSame401()
     {
-        var (active, _, _) = await SeedClientAsync();
-        var (inactive, _, _) = await SeedClientAsync(active: false);
+        var (active, _, _) = await _seed!.SeedClientAsync();
+        var (inactive, _, _) = await _seed!.SeedClientAsync(active: false);
 
         var wrongSecret = await PostAsync("/auth/token/", $"{active}:nope");
         var unknown = await PostAsync("/auth/token/", $"nobody-{Guid.NewGuid():N}:{Secret}");
@@ -212,7 +159,7 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task Token_RevokedSecret_IsRefused()
     {
-        var (clientId, _, secretId) = await SeedClientAsync();
+        var (clientId, _, secretId) = await _seed!.SeedClientAsync();
         await using (var scope = _factory!.Services.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<IClientRepository>().RevokeSecretAsync(secretId, DateTimeOffset.UtcNow, CancellationToken.None);
@@ -224,7 +171,7 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task Token_MissingCredentialsOrBadGrant_IsRejectedBeforeAnyLookup()
     {
-        var (clientId, _, _) = await SeedClientAsync();
+        var (clientId, _, _) = await _seed!.SeedClientAsync();
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostAsync("/auth/token/", credentials: null)).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/auth/token/", $"{clientId}:{Secret}", grantType: null)).StatusCode);
@@ -245,12 +192,11 @@ public sealed class AuthEndpointTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task Token_WithNoActiveSigningKey_IsAnErrorNotAToken()
     {
-        var (clientId, _, _) = await SeedClientAsync();
+        var (clientId, _, _) = await _seed!.SeedClientAsync();
         await using (var scope = _factory!.Services.CreateAsyncScope())
         {
             var keys = scope.ServiceProvider.GetRequiredService<ISigningKeyRepository>();
-            var active = await keys.GetByKidAsync(_kid, CancellationToken.None);
-            await keys.RetireAsync(active!.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            await keys.RetireAsync(_seed!.SigningKeyId, DateTimeOffset.UtcNow, CancellationToken.None);
         }
 
         var response = await PostAsync("/auth/token/", $"{clientId}:{Secret}");

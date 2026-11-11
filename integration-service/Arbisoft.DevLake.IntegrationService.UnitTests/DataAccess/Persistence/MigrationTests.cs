@@ -49,6 +49,16 @@ public class MigrationTests
     }
 
     [MySqlFact]
+    public async Task SeedMigration_CreatesTheTwoScopesTheApisRequire()
+    {
+        await using var connection = new MySqlConnection(_fixture.DatabaseConnectionString);
+
+        var names = (await connection.QueryAsync<string>("SELECT name FROM Scopes WHERE name IN ('stats:read', 'projects:fetch')")).ToList();
+
+        Assert.Equal(2, names.Count);
+    }
+
+    [MySqlFact]
     public void RunningAgain_AppliesNothing()
     {
         var engine = DatabaseMigrationService.BuildEngine(_fixture.DatabaseConnectionString, new DbUpLogAdapter(NullLogger.Instance));
@@ -66,8 +76,9 @@ public class MigrationTests
             .Where(name => name.EndsWith(".sql", StringComparison.Ordinal))
             .ToList();
 
-        Assert.Equal(2, names.Count);
+        Assert.Equal(3, names.Count);
         Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.001_InitialSchema.sql", StringComparison.Ordinal));
         Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.002_SecretStore.sql", StringComparison.Ordinal));
+        Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.003_SeedScopes.sql", StringComparison.Ordinal));
     }
 }

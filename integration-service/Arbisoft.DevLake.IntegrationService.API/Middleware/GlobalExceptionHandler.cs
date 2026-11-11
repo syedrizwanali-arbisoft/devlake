@@ -41,11 +41,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         {
             Status = StatusCodes.Status500InternalServerError,
             Title = "An unexpected error occurred.",
-            Extensions =
-            {
-                ["code"] = ErrorCode,
-                ["correlationId"] = httpContext.TraceIdentifier
-            }
+            Extensions = { ["code"] = ErrorCode }
         };
 
         return await _problemDetails.TryWriteAsync(new ProblemDetailsContext { HttpContext = httpContext, ProblemDetails = problem });

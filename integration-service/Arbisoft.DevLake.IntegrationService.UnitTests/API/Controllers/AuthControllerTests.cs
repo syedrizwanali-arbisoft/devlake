@@ -33,6 +33,7 @@ public class AuthControllerTests
     {
         _controller = new AuthController(_authService) { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
         _controller.HttpContext.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
+        _controller.Request.ContentType = "application/x-www-form-urlencoded";
     }
 
     private void SetBasic(string credentials)
@@ -76,6 +77,20 @@ public class AuthControllerTests
         var body = (OAuthErrorResponse)Assert.IsType<UnauthorizedObjectResult>(result).Value!;
         Assert.Equal("invalid_client", body.Error);
         Assert.DoesNotContain("secret", body.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Token_NotAFormBody_Returns415()
+    {
+        SetBasic("sophia:s3cret");
+        _controller.Request.ContentType = "application/json";
+
+        var result = await _controller.TokenAsync("client_credentials", CancellationToken.None);
+
+        var response = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status415UnsupportedMediaType, response.StatusCode);
+        Assert.Equal("invalid_request", ((OAuthErrorResponse)response.Value!).Error);
+        await _authService.DidNotReceiveWithAnyArgs().AuthenticateAsync(default!, default);
     }
 
     [Theory]

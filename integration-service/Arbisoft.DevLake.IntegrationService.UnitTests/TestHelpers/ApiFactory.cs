@@ -16,6 +16,7 @@
 using Arbisoft.DevLake.IntegrationService.API.Controllers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
 
@@ -39,5 +40,6 @@ public sealed class ApiFactory : WebApplicationFactory<AuthController>
         builder.UseSetting("RabbitMq:Password", "pass");
         builder.UseSetting("DevLake:ApiToken", "token");
         builder.UseSetting("Workstream:ApiToken", "token");
+        builder.ConfigureServices(services => services.AddControllers().AddApplicationPart(typeof(ProtectedTestController).Assembly));
     }
 }
