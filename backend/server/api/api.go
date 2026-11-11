@@ -73,6 +73,10 @@ func InjectCustomService(pipelineNotifier services.PipelineNotificationService, 
 
 // @title  DevLake Swagger API
 // @version 0.1
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name Authorization
+// @description A DevLake API key as "Bearer <API key>". Routes that need it are called under /rest/...
 // @description  <h2>This is the main page of devlake api</h2>
 // @license.name Apache-2.0
 // @host localhost:8080

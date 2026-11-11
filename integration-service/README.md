@@ -142,11 +142,31 @@ Three typed HTTP clients make the outbound calls. Each has its own timeout and c
 
 | Client | Calls | Authentication |
 |---|---|---|
-| DevLake | `GET /is_valid`, `GET /stats/{email}/jira`, `/github`, `/ai_usage`, `/ai_cost` with `?tf=24h` or `?from=...&to=...` | `Authorization: Bearer <DevLake:ApiToken>` |
+| DevLake | `GET /is_valid`, `GET /stats/{email}/jira`, `/github`, `/ai_usage`, `/ai_cost` with `?tf=24h` or `?from=...&to=...`. `DevLake:BaseUrl` ends in `/rest/` | `Authorization: Bearer <DevLake:ApiToken>` |
 | Workstream | `GET /is_valid`, `GET /projects?page=N&pageSize=M` | `Authorization: Bearer <Workstream:ApiToken>` |
 | Sophia | `POST /oauth2/token/`, then the callback (`POST /api/v1/devlake/callback/`) | OAuth2 client credentials, or a stored API token |
 
 Sophia's base URL, token URL, client ID, encrypted secret, scope and callback path and method come from the client's `ClientConfigs` and `ClientConfigOutboundUrls` rows, because each environment (Stage, Prod) has its own. The access token is reused until a minute before it expires, a rejected token is replaced once, and URLs must use HTTPS (plain HTTP only for loopback, for local stubs).
+
+### DevLake endpoints
+
+DevLake serves these for the Integration Service (`backend/server/api/integration`). They are reached through `/rest/...`. There, DevLake checks `Authorization: Bearer <API key>` and the key's allowed path, so create a DevLake API key whose allowed path is `^/(is_valid|stats/.+)$`. A direct call without the `/rest` prefix gets 401, even when login is off.
+
+- **`GET is_valid`:** `true`. An invalid, expired or out-of-scope key gets 403 from DevLake, which the client reports as `false`.
+- **Period:** give `tf` (1 to 999 and one of `h`, `d`, `w`, `M`, `y`, case-sensitive) or both `from` and `to` (RFC 3339 with an explicit offset, `from` earlier than `to`, at most one year). Giving both forms, one end of a range, or nothing gets 400 with a message naming the field.
+- **Every stats response** starts with `email` (lowercased), `timeFrame` (left out for a range), and `from` and `to` (RFC 3339 UTC, `[from, to)`). An email with no data gets zeros and empty lists.
+
+| Category | Fields after the common ones |
+|---|---|
+| `jira` | `issuesResolved`, `storyPointsResolved`, `issuesCreated`, and the current `issuesInProgress` and `issuesTodo` |
+| `github` | `commits`, `additions`, `deletions`, `pullRequestsOpened`, `pullRequestsMerged`, `pullRequestsWithCommits`, `reviews` |
+| `ai_usage` | `providers: [{ provider, activeDays, sessions, suggestions, acceptances, linesAdded, linesRemoved, commitsByAi, pullRequests }]`, `toolEditsAccepted`, `toolEditsRejected` |
+| `ai_cost` | `models: [{ provider, model, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, estimatedCostUsd }]`, `totalEstimatedCostUsd` (decimal strings in USD) |
+
+Data limits:
+
+- **Jira and GitHub accounts:** Jira stats, and GitHub pull request authorship and reviews, match on the account's email, which many accounts hide. Commit counts and `pullRequestsWithCommits` use the commit author email, which is reliable.
+- **AI data:** it is daily, so AI windows cover whole UTC days.
 
 Every failure becomes one of four exceptions, so callers handle outcomes, not HTTP details:
 

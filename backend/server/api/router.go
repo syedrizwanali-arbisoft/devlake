@@ -104,12 +104,8 @@ func RegisterRouter(r *gin.Engine, basicRes context.BasicRes) {
 	access.RegisterRoutes(r)
 	grafanausers.RegisterRoutes(r)
 
-	// integration service api (skeletons, behavior to be defined)
-	r.GET("/is_valid", integration.IsValid)
-	r.GET("/stats/:email/jira", integration.GetJiraStats)
-	r.GET("/stats/:email/github", integration.GetGithubStats)
-	r.GET("/stats/:email/ai_usage", integration.GetAiUsageStats)
-	r.GET("/stats/:email/ai_cost", integration.GetAiCostStats)
+	// Integration Service endpoints, reachable only through /rest/... with a DevLake API key.
+	registerIntegrationRoutes(r, basicRes)
 
 	// user project mapping api
 	// admin-only: customer-admin sessions; API keys can't manage keys or project access
@@ -127,6 +123,24 @@ func RegisterRouter(r *gin.Engine, basicRes context.BasicRes) {
 	for pluginName, apiResources := range resources {
 		registerPluginEndpoints(r, basicRes, pluginName, apiResources)
 	}
+}
+
+// registerIntegrationRoutes is the composition root for the Integration Service endpoints.
+func registerIntegrationRoutes(r *gin.Engine, basicRes context.BasicRes) {
+	stats, err := integration.NewStatsService(basicRes.GetDal())
+	if err != nil {
+		panic(err)
+	}
+	handlers, err := integration.NewHandlers(stats)
+	if err != nil {
+		panic(err)
+	}
+	apiKeyOnly := integration.RequireAPIKey()
+	r.GET("/is_valid", apiKeyOnly, handlers.IsValid)
+	r.GET("/stats/:email/jira", apiKeyOnly, handlers.GetJiraStats)
+	r.GET("/stats/:email/github", apiKeyOnly, handlers.GetGitHubStats)
+	r.GET("/stats/:email/ai_usage", apiKeyOnly, handlers.GetAIUsageStats)
+	r.GET("/stats/:email/ai_cost", apiKeyOnly, handlers.GetAICostStats)
 }
 
 func registerPluginEndpoints(r *gin.Engine, basicRes context.BasicRes, pluginName string, apiResources map[string]map[string]plugin.ApiResourceHandler) {
