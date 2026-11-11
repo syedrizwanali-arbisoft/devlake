@@ -82,6 +82,60 @@ Failed, expired and unreadable messages go to `<queue>.dead` through the `<queue
 - **Duplicates:** an identical request (same client, emails and time frame) inside the duplicate window returns the original acknowledgement. A unique key in the database is what prevents the duplicate, so concurrent identical requests also produce one. Revoked and failed requests never block a repeat.
 - **Queue problems:** 429 with `Retry-After` when the queue is full, 503 with `Retry-After` when the broker is unreachable. Nothing is recorded in either case.
 
+## Processing requests
+
+A background job in the API takes queued stats requests off RabbitMQ, collects the stats from DevLake, and delivers them to the client's callback. It is on by default and can be turned off with `Processing:Enabled=false` (requests then stay queued).
+
+Every `Processing:IntervalSeconds` (30) a run does this, in order:
+
+1. Marks requests that were never finished, because their message expired from the queue or was dead-lettered, as `Failed`, so polling does not say `Queued` forever.
+2. Checks the queue depth, and does nothing more if it is empty.
+3. Checks that DevLake accepts our API token and that a Sophia access token can be obtained for every client that has requests waiting. If not, the run stops **before taking any message**, so requests stay queued and no message's redelivery count goes up. A client with nothing waiting is not checked.
+4. Takes up to `RabbitMq:ReceiveBatchLimit` (10) messages and processes up to `Processing:MaxParallelRequests` (4) at a time.
+
+For each request the job:
+
+- skips and acknowledges it if it is already finished (a repeat delivery does no second delivery to the client);
+- marks it `Revoked - no callback URL` if the callback was removed while it waited;
+- sets it to `Processing`, loads the engineer's mapped emails, and fetches Jira, GitHub, AI usage and AI cost for the Arbisoft email and every mapped email at once;
+- posts one merged body to the callback, up to the client's `maxAttempts` times, waiting `Processing:DeliveryRetryDelaySeconds` (30) after the first failure and twice as long after each further one, and records every attempt in `RequestResponseAttempts`;
+- ends the request `Success` or `Failed`, then acknowledges the message.
+
+One failing request never stops the others. DevLake or Sophia being down, or refusing our credentials, is systemic: the request goes back to `Queued`, the rest of the run is not started, and the next run tries again. A request DevLake refuses (a 4xx) fails on its own with the reason recorded.
+
+The callback body (Sophia has not specified one):
+
+```json
+{
+  "correlation_id": "0b8f3c52-...",
+  "time_frame": "24h",
+  "engineers": [
+    {
+      "email": "jane@arbisoft.com",
+      "mapped_emails": ["jane.d@gmail.com"],
+      "jira":     { "jane@arbisoft.com": { ... } },
+      "github":   { "jane@arbisoft.com": { ... }, "jane.d@gmail.com": { ... } },
+      "ai_usage": { "jane@arbisoft.com": { ... } },
+      "ai_cost":  { "jane@arbisoft.com": { ... } }
+    }
+  ]
+}
+```
+
+A range request has `from` and `to` instead of `time_frame`. Each source holds the stats of every email as DevLake returned them. A batch has one entry per engineer.
+
+On shutdown the job stops taking new work. A delivery to Sophia that has already started is finished and recorded, so a delivered result is never left unrecorded; everything else goes back on the queue.
+
+A request that waits longer than the queue's message lifetime plus `Processing:StaleGraceSeconds` (60) is marked `Failed` with an `Expired` attempt.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `Processing:Enabled` | true | Turns the job on or off |
+| `Processing:IntervalSeconds` | 30 | How often the job runs |
+| `Processing:MaxParallelRequests` | 4 | Requests processed at the same time in one run |
+| `Processing:DeliveryRetryDelaySeconds` | 30 | Wait before the second delivery attempt; doubles each time |
+| `Processing:StaleGraceSeconds` | 60 | Extra time past the queue lifetime before an unfinished request is failed |
+
 ## Calls to DevLake, Sophia and Workstream
 
 Three typed HTTP clients make the outbound calls. Each has its own timeout and circuit breaker, and none of them logs a URL, a token or a payload, only the correlation ID, the system and the status.

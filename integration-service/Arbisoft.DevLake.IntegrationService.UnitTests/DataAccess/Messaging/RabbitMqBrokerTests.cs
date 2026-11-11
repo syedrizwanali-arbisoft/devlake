@@ -89,6 +89,26 @@ public class RabbitMqBrokerTests
     }
 
     [RabbitMqFact]
+    public async Task GetDepth_CountsTheWaitingMessages_WithoutTakingOneOrRaisingItsDeliveryCount()
+    {
+        await using var broker = RabbitMqHarness.Create();
+        Assert.Equal(0, await broker.Consumer.GetDepthAsync(CancellationToken.None));
+        for (var i = 0; i < 3; i++)
+        {
+            await broker.Publisher.PublishAsync(RabbitMqHarness.NewMessage(), CancellationToken.None);
+        }
+
+        Assert.Equal(3, await broker.Consumer.GetDepthAsync(CancellationToken.None));
+        Assert.Equal(3, await broker.Consumer.GetDepthAsync(CancellationToken.None));
+
+        await using var batch = await broker.Consumer.ReceiveAsync(1, CancellationToken.None);
+        var delivery = Assert.Single(batch.Deliveries);
+        Assert.False(delivery.Redelivered);
+        Assert.Equal(0, delivery.DeliveryCount);
+        Assert.Equal(2, await broker.Consumer.GetDepthAsync(CancellationToken.None));
+    }
+
+    [RabbitMqFact]
     public async Task AMessageNeverAcknowledged_ComesBackAfterTheBatchIsDisposed()
     {
         await using var broker = RabbitMqHarness.Create();

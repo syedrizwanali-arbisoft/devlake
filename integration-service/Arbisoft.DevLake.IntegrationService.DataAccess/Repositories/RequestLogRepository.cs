@@ -97,6 +97,22 @@ public sealed class RequestLogRepository : RepositoryBase, IRequestLogRepository
             cancellationToken);
     }
 
+    public Task<IReadOnlyList<RequestLog>> ListStaleAsync(IReadOnlyCollection<string> statuses, DateTimeOffset createdBefore, int limit, CancellationToken cancellationToken)
+    {
+        return QueryAsync<RequestLog>(
+            $"SELECT {Columns} FROM RequestLogs WHERE status IN @statuses AND createdOn < @createdBefore ORDER BY createdOn, id LIMIT @limit",
+            new { statuses, createdBefore, limit },
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<long>> GetClientsWithPendingRequestsAsync(CancellationToken cancellationToken)
+    {
+        return QueryAsync<long>(
+            "SELECT DISTINCT clientRefId FROM RequestLogs WHERE status IN @statuses ORDER BY clientRefId",
+            new { statuses = new[] { RequestStatus.Queued, RequestStatus.Processing } },
+            cancellationToken);
+    }
+
     public Task<PagedResult<RequestLog>> ListAsync(RequestLogFilter filter, int page, int pageSize, CancellationToken cancellationToken)
     {
         const string fromAndWhere =

@@ -141,6 +141,31 @@ public sealed class RabbitMqHarness : IAsyncDisposable
         throw new TimeoutException("The condition was not met in time.");
     }
 
+    /// <summary>Puts a message straight onto a queue, as the API would, so a test can replay or invent one.</summary>
+    public static async Task PublishRawAsync(string queueName, string correlationId, string eventType, string body)
+    {
+        var settings = Settings ?? throw new InvalidOperationException($"{EnvironmentVariable} is not set.");
+        var factory = new ConnectionFactory
+        {
+            HostName = settings["host"],
+            Port = int.Parse(settings["port"], System.Globalization.CultureInfo.InvariantCulture),
+            UserName = settings["user"],
+            Password = settings["password"]
+        };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        var properties = new BasicProperties
+        {
+            Persistent = true,
+            CorrelationId = correlationId,
+            MessageId = correlationId,
+            Type = eventType,
+            ContentType = QueueConstants.JsonContentType,
+            Headers = new Dictionary<string, object?> { [QueueConstants.SchemaVersionHeader] = QueueConstants.CurrentSchemaVersion }
+        };
+        await channel.BasicPublishAsync(string.Empty, queueName, mandatory: true, properties, Encoding.UTF8.GetBytes(body));
+    }
+
     /// <summary>True when the broker has a queue of this name.</summary>
     public static async Task<bool> QueueExistsAsync(string queueName)
     {

@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.API.Controllers;
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,11 +26,13 @@ public sealed class ApiFactory : WebApplicationFactory<AuthController>
 {
     private readonly string _connectionString;
     private readonly IReadOnlyDictionary<string, string> _extraSettings;
+    private readonly FakeHttpMessageHandler? _upstream;
 
-    public ApiFactory(string connectionString, IReadOnlyDictionary<string, string>? extraSettings = null)
+    public ApiFactory(string connectionString, IReadOnlyDictionary<string, string>? extraSettings = null, FakeHttpMessageHandler? upstream = null)
     {
         _connectionString = connectionString;
         _extraSettings = extraSettings ?? new Dictionary<string, string>();
+        _upstream = upstream;
     }
 
     /// <summary>The request queue this API instance uses. It is unique to the instance and deleted when the instance is disposed.</summary>
@@ -64,7 +67,21 @@ public sealed class ApiFactory : WebApplicationFactory<AuthController>
         UseRabbitMqSettings(builder);
         builder.UseSetting("DevLake:ApiToken", "token");
         builder.UseSetting("Workstream:ApiToken", "token");
+
+        // The job would take requests off the queue that tests are about to inspect, so it is off unless a test turns it on.
+        builder.UseSetting("Processing:Enabled", "false");
         builder.ConfigureServices(services => services.AddControllers().AddApplicationPart(typeof(ProtectedTestController).Assembly));
+        if (_upstream is not null)
+        {
+            builder.ConfigureServices(services =>
+            {
+                foreach (var name in new[] { ExternalHttpClients.DevLake, ExternalHttpClients.Workstream, ExternalHttpClients.SophiaToken, ExternalHttpClients.SophiaCallback })
+                {
+                    services.AddHttpClient(name).ConfigurePrimaryHttpMessageHandler(() => _upstream.AsHandler());
+                }
+            });
+        }
+
         foreach (var (key, value) in _extraSettings)
         {
             builder.UseSetting(key, value);

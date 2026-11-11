@@ -28,7 +28,7 @@ public sealed class RequestService : IRequestService
     private const int MaxConflictRetries = 3;
 
     private readonly IRequestLogRepository _requestLogs;
-    private readonly IClientConfigRepository _clientConfigs;
+    private readonly ICallbackAvailability _callbacks;
     private readonly IRequestQueuePublisher _publisher;
     private readonly IDbSession _session;
     private readonly TimeProvider _timeProvider;
@@ -36,14 +36,14 @@ public sealed class RequestService : IRequestService
 
     public RequestService(
         IRequestLogRepository requestLogs,
-        IClientConfigRepository clientConfigs,
+        ICallbackAvailability callbacks,
         IRequestQueuePublisher publisher,
         IDbSession session,
         TimeProvider timeProvider,
         ILogger<RequestService> logger)
     {
         _requestLogs = requestLogs;
-        _clientConfigs = clientConfigs;
+        _callbacks = callbacks;
         _publisher = publisher;
         _session = session;
         _timeProvider = timeProvider;
@@ -55,7 +55,7 @@ public sealed class RequestService : IRequestService
         var correlationId = Guid.NewGuid().ToString("D");
         var body = JsonSerializer.Serialize(ToBody(correlationId, submission));
 
-        if (!await HasActiveCallbackAsync(submission, cancellationToken))
+        if (!await _callbacks.IsAvailableAsync(submission.ClientRefId, submission.EventType, cancellationToken))
         {
             await RecordRevokedAsync(submission, correlationId, body, cancellationToken);
             return new SubmissionResult(SubmissionOutcome.NoCallbackUrl, correlationId);
@@ -122,17 +122,6 @@ public sealed class RequestService : IRequestService
         await _requestLogs.InsertJsonAsync(new RequestLogJson { RequestLogId = id, Json = body }, cancellationToken);
         await _session.CommitAsync(cancellationToken);
         _logger.LogWarning("Request {CorrelationId} revoked: client {ClientRefId} has no active callback URL for {EventType}", correlationId, submission.ClientRefId, submission.EventType);
-    }
-
-    private async Task<bool> HasActiveCallbackAsync(RequestSubmission submission, CancellationToken cancellationToken)
-    {
-        var config = await _clientConfigs.GetByClientRefIdAsync(submission.ClientRefId, cancellationToken);
-        if (config is not { IsActive: true })
-        {
-            return false;
-        }
-
-        return await _clientConfigs.GetActiveOutboundUrlAsync(config.Id, submission.EventType, cancellationToken) is not null;
     }
 
     private RequestLog NewLog(RequestSubmission submission, string correlationId, string status, string? idempotencyKey) => new()

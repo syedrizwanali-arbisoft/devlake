@@ -128,6 +128,54 @@ public sealed class SophiaClientTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureAccessToken_FetchesAToken_ThatTheNextCallbackReuses()
+    {
+        await _client.EnsureAccessTokenAsync(7, CorrelationId, CancellationToken.None);
+        await PostAsync();
+
+        Assert.Single(TokenRequests);
+        Assert.Equal("Bearer tok-1", Assert.Single(CallbackRequests).Authorization);
+    }
+
+    [Fact]
+    public async Task EnsureAccessToken_WhenSophiaRefusesTheCredentials_ThrowsAuthentication_AndSendsNothingElse()
+    {
+        Script((_, _) => Task.FromResult(Json(HttpStatusCode.Unauthorized, "{}")));
+
+        await Assert.ThrowsAsync<ExternalAuthenticationException>(() => _client.EnsureAccessTokenAsync(7, CorrelationId, CancellationToken.None));
+
+        Assert.Empty(CallbackRequests);
+    }
+
+    [Fact]
+    public async Task EnsureAccessToken_ForAClientWithNoConfig_IsNotConfigured()
+    {
+        GivenConfig(null);
+
+        await Assert.ThrowsAsync<CallbackNotConfiguredException>(() => _client.EnsureAccessTokenAsync(7, CorrelationId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task EnsureAccessToken_ForAnApiTokenConfig_NeedsNoFetch_ButRefusesAnExpiredToken()
+    {
+        GivenConfig(new ClientConfig
+        {
+            Id = 3,
+            ClientRefId = 7,
+            AuthType = ClientConfigAuthType.ApiToken,
+            BaseUrl = "https://sophia.test",
+            ApiTokenEncrypted = _encryptor.Encrypt("static-token"),
+            TokenExpiresOn = _time.GetUtcNow().AddDays(1),
+            IsActive = true
+        });
+        await _client.EnsureAccessTokenAsync(7, CorrelationId, CancellationToken.None);
+        Assert.Empty(_host.Handler.Requests);
+
+        _time.Advance(TimeSpan.FromDays(2));
+        await Assert.ThrowsAsync<ExternalAuthenticationException>(() => _client.EnsureAccessTokenAsync(7, CorrelationId, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task TheConfiguredScope_IsSentWithTheTokenRequest()
     {
         GivenConfig(OAuthConfig(scope: "callbacks.write"));

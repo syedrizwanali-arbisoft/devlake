@@ -30,7 +30,7 @@ public class RequestServiceTests
     private static readonly DateTimeOffset Now = new(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
 
     private readonly IRequestLogRepository _logs = Substitute.For<IRequestLogRepository>();
-    private readonly IClientConfigRepository _configs = Substitute.For<IClientConfigRepository>();
+    private readonly ICallbackAvailability _callbacks = Substitute.For<ICallbackAvailability>();
     private readonly IRequestQueuePublisher _publisher = Substitute.For<IRequestQueuePublisher>();
     private readonly IDbSession _session = Substitute.For<IDbSession>();
     private readonly RequestService _service;
@@ -39,7 +39,7 @@ public class RequestServiceTests
     {
         _logs.TryInsertAsync(Arg.Any<RequestLog>(), Arg.Any<CancellationToken>()).Returns(41L);
         _logs.InsertAsync(Arg.Any<RequestLog>(), Arg.Any<CancellationToken>()).Returns(42L);
-        _service = new RequestService(_logs, _configs, _publisher, _session, new FakeTimeProvider(Now), NullLogger<RequestService>.Instance);
+        _service = new RequestService(_logs, _callbacks, _publisher, _session, new FakeTimeProvider(Now), NullLogger<RequestService>.Instance);
     }
 
     private static RequestSubmission Submission(string eventType = RequestEventTypes.EngineerStats, params string[] emails)
@@ -48,10 +48,9 @@ public class RequestServiceTests
         return new RequestSubmission(7, eventType, "/api/v1/engineers/{email}/stats?tf={timeFrame}", emails.Length == 0 ? ["jane@arbisoft.com"] : emails, timeFrame, "the-key");
     }
 
-    private void GivenCallback(string eventType = RequestEventTypes.EngineerStats, bool configActive = true, bool urlExists = true)
+    private void GivenCallback(string eventType = RequestEventTypes.EngineerStats, bool available = true)
     {
-        _configs.GetByClientRefIdAsync(7, Arg.Any<CancellationToken>()).Returns(new ClientConfig { Id = 3, ClientRefId = 7, IsActive = configActive });
-        _configs.GetActiveOutboundUrlAsync(3, eventType, Arg.Any<CancellationToken>()).Returns(urlExists ? new ClientConfigOutboundUrl { Id = 9 } : null);
+        _callbacks.IsAvailableAsync(7, eventType, Arg.Any<CancellationToken>()).Returns(available);
     }
 
     [Fact]
@@ -139,12 +138,10 @@ public class RequestServiceTests
         Assert.False(body.TryGetProperty("to", out _));
     }
 
-    [Theory]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    public async Task Submit_WithoutAnActiveCallbackUrl_LogsItRevokedAndDoesNotQueue(bool configActive, bool urlExists)
+    [Fact]
+    public async Task Submit_WithoutAnActiveCallbackUrl_LogsItRevokedAndDoesNotQueue()
     {
-        GivenCallback(configActive: configActive, urlExists: urlExists);
+        GivenCallback(available: false);
 
         var result = await _service.SubmitAsync(Submission(), CancellationToken.None);
 
@@ -156,14 +153,6 @@ public class RequestServiceTests
         await _session.Received(1).CommitAsync(Arg.Any<CancellationToken>());
         await _publisher.DidNotReceiveWithAnyArgs().PublishAsync(default!, default);
         await _logs.DidNotReceiveWithAnyArgs().TryInsertAsync(default!, default);
-    }
-
-    [Fact]
-    public async Task Submit_ForAClientWithNoConfigAtAll_IsRevoked()
-    {
-        _configs.GetByClientRefIdAsync(7, Arg.Any<CancellationToken>()).Returns((ClientConfig?)null);
-
-        Assert.Equal(SubmissionOutcome.NoCallbackUrl, (await _service.SubmitAsync(Submission(), CancellationToken.None)).Outcome);
     }
 
     [Fact]

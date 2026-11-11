@@ -40,6 +40,9 @@ public abstract class ApiTestBase : IAsyncLifetime, IDisposable
         _settings = settings;
     }
 
+    /// <summary>The network the API's calls to DevLake, Sophia and Workstream go to. Nothing is scripted by default.</summary>
+    protected FakeHttpMessageHandler Upstream { get; } = new();
+
     protected ApiFactory Factory { get; private set; } = null!;
 
     protected HttpClient Http { get; private set; } = null!;
@@ -53,7 +56,7 @@ public abstract class ApiTestBase : IAsyncLifetime, IDisposable
             return;
         }
 
-        Factory = new ApiFactory(_database.DatabaseConnectionString, _settings);
+        Factory = new ApiFactory(_database.DatabaseConnectionString, _settings, Upstream);
         Http = Factory.CreateClient();
         Seed = new ApiSeed(Factory);
         await Seed.SeedSigningKeyAsync();

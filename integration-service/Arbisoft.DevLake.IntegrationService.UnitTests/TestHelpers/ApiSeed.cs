@@ -19,6 +19,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Persistence;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
@@ -111,7 +112,13 @@ public sealed class ApiSeed
     }
 
     /// <summary>Gives a client an active outbound config with an active callback URL for each event type, as the admin portal will.</summary>
-    public async Task SeedCallbackAsync(SeededClient client, params string[] eventTypes)
+    public Task SeedCallbackAsync(SeededClient client, params string[] eventTypes) => SeedSophiaAsync(client, maxAttempts: 3, eventTypes);
+
+    /// <summary>
+    /// Gives a client a complete Sophia setup: OAuth2 client credentials with an encrypted secret, and a callback URL for each event type.
+    /// The stub in <see cref="UpstreamStub"/> answers for <c>https://sophia.test</c>.
+    /// </summary>
+    public async Task SeedSophiaAsync(SeededClient client, int maxAttempts, params string[] eventTypes)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         var configs = scope.ServiceProvider.GetRequiredService<IClientConfigRepository>();
@@ -121,8 +128,11 @@ public sealed class ApiSeed
             {
                 ClientRefId = client.ClientRefId,
                 AuthType = ClientConfigAuthType.OAuth2ClientCredentials,
-                BaseUrl = "https://sophia.example.test",
-                MaxAttempts = 3,
+                BaseUrl = "https://sophia.test",
+                TokenUrl = "https://sophia.test/oauth2/token/",
+                OutboundClientId = "stage-client-id",
+                OutboundClientSecretEncrypted = scope.ServiceProvider.GetRequiredService<ISecretEncryptor>().Encrypt("stage-client-secret"),
+                MaxAttempts = maxAttempts,
                 IsActive = true,
                 CreatedOn = now,
                 CreatedBy = "tests"
@@ -153,6 +163,50 @@ public sealed class ApiSeed
             },
             CancellationToken.None);
         return correlationId;
+    }
+
+    /// <summary>
+    /// Turns off every other client's outbound config. The test database is shared, so other tests leave clients behind whose secrets were encrypted
+    /// with a different key; a processing run must not trip over them.
+    /// </summary>
+    public Task IsolateAsync(SeededClient client) => ExecuteAsync("UPDATE ClientConfigs SET isActive = 0 WHERE clientRefId <> @id", new { id = client.ClientRefId });
+
+    /// <summary>Maps an engineer's Arbisoft email to another email they commit with.</summary>
+    public async Task SeedEmailMappingAsync(string arbisoftEmail, string email)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IEmailMappingRepository>().InsertAsync(
+            new EmailMapping { ArbisoftEmail = arbisoftEmail, Email = email, CreatedOn = DateTimeOffset.UtcNow }, CancellationToken.None);
+    }
+
+    /// <summary>Turns a client's callback URL for an event type off, as an administrator would.</summary>
+    public async Task DeactivateCallbackUrlAsync(SeededClient client, string eventType)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var configs = scope.ServiceProvider.GetRequiredService<IClientConfigRepository>();
+        var config = (await configs.GetByClientRefIdAsync(client.ClientRefId, CancellationToken.None))!;
+        foreach (var url in await configs.GetOutboundUrlsAsync(config.Id, CancellationToken.None))
+        {
+            if (url.EventType == eventType)
+            {
+                await configs.UpdateOutboundUrlAsync(
+                    new ClientConfigOutboundUrl { Id = url.Id, ClientConfigId = url.ClientConfigId, EventType = url.EventType, Path = url.Path, Method = url.Method, IsActive = false, ModifiedOn = DateTimeOffset.UtcNow, ModifiedBy = "tests" },
+                    CancellationToken.None);
+            }
+        }
+    }
+
+    /// <summary>Every attempt recorded for a request, oldest first.</summary>
+    public async Task<IReadOnlyList<RequestResponseAttempt>> AttemptsAsync(long requestLogId)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IRequestLogRepository>().GetAttemptsAsync(requestLogId, CancellationToken.None);
+    }
+
+    /// <summary>How many messages are waiting in this API instance's queue.</summary>
+    public async Task<int> QueueDepthAsync()
+    {
+        return await _factory.Services.GetRequiredService<IRequestQueueConsumer>().GetDepthAsync(CancellationToken.None);
     }
 
     /// <summary>Runs a statement straight on the test database, for setting up a state a test needs, such as an old request.</summary>

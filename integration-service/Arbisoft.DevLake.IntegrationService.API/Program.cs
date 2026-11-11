@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.API.Authorization;
+using Arbisoft.DevLake.IntegrationService.API.BackgroundJobs;
 using Arbisoft.DevLake.IntegrationService.API.Middleware;
 using Arbisoft.DevLake.IntegrationService.API.RateLimiting;
 using Arbisoft.DevLake.IntegrationService.Business;
@@ -50,6 +51,7 @@ builder.Services.AddApiVersioning(options =>
 builder.Services.AddHealthChecks();
 builder.Services.AddDataAccess(builder.Configuration);
 builder.Services.AddBusiness(builder.Configuration);
+builder.Services.AddHostedService<RequestProcessingJob>();
 
 var app = builder.Build();
 

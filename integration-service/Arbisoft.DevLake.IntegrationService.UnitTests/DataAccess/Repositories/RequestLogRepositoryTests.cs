@@ -180,6 +180,49 @@ public class RequestLogRepositoryTests : RepositoryTestBase
     }
 
     [MySqlFact]
+    public async Task ListStale_ReturnsOnlyTheGivenStatuses_OlderThanTheCutoff_OldestFirst_UpToTheLimit()
+    {
+        var client = await InsertClientAsync();
+        var cutoff = Instant.AddYears(50);
+        var oldest = await InsertRequestLogAsync(client.Id, RequestStatus.Queued, cutoff.AddHours(-3));
+        var older = await InsertRequestLogAsync(client.Id, RequestStatus.Processing, cutoff.AddHours(-2));
+        await InsertRequestLogAsync(client.Id, RequestStatus.Success, cutoff.AddHours(-4));
+        await InsertRequestLogAsync(client.Id, RequestStatus.Failed, cutoff.AddHours(-4));
+        await InsertRequestLogAsync(client.Id, RequestStatus.Queued, cutoff.AddHours(1));
+        await InsertRequestLogAsync(client.Id, RequestStatus.Queued, cutoff);
+
+        var stale = await Repository.ListStaleAsync([RequestStatus.Received, RequestStatus.Queued, RequestStatus.Processing], cutoff, 10_000, CancellationToken.None);
+        var limited = await Repository.ListStaleAsync([RequestStatus.Received, RequestStatus.Queued, RequestStatus.Processing], cutoff, 1, CancellationToken.None);
+
+        Assert.Equal([oldest, older], stale.Where(l => l.ClientRefId == client.Id).Select(l => l.Id));
+        Assert.Equal(stale.OrderBy(l => l.CreatedOn).ThenBy(l => l.Id).Select(l => l.Id), stale.Select(l => l.Id));
+        Assert.Single(limited);
+        Assert.Equal(stale[0].Id, limited[0].Id);
+    }
+
+    [MySqlFact]
+    public async Task GetClientsWithPendingRequests_ListsOnlyClientsWithQueuedOrProcessingRequests()
+    {
+        var waiting = await InsertClientAsync();
+        var busy = await InsertClientAsync();
+        var finished = await InsertClientAsync();
+        var idle = await InsertClientAsync();
+        await InsertRequestLogAsync(waiting.Id, RequestStatus.Queued);
+        await InsertRequestLogAsync(waiting.Id, RequestStatus.Queued);
+        await InsertRequestLogAsync(busy.Id, RequestStatus.Processing);
+        await InsertRequestLogAsync(finished.Id, RequestStatus.Success);
+        await InsertRequestLogAsync(finished.Id, RequestStatus.Failed);
+        await InsertRequestLogAsync(finished.Id, RequestStatus.RevokedNoCallbackUrl);
+
+        var clients = await Repository.GetClientsWithPendingRequestsAsync(CancellationToken.None);
+
+        Assert.Single(clients, id => id == waiting.Id);
+        Assert.Contains(busy.Id, clients);
+        Assert.DoesNotContain(finished.Id, clients);
+        Assert.DoesNotContain(idle.Id, clients);
+    }
+
+    [MySqlFact]
     public async Task Attempts_AreRecordedInOrder_WithTheErrorOfAFailedAttempt()
     {
         var client = await InsertClientAsync();

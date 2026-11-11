@@ -15,6 +15,7 @@
 
 using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Processing;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 using Arbisoft.DevLake.IntegrationService.DataAccess;
 using Microsoft.Extensions.Configuration;
@@ -39,6 +40,11 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ProcessingOptions>()
+            .Bind(configuration.GetSection(ProcessingOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddMemoryCache();
         services.AddSingleton<ISecretEncryptor, SecretEncryptor>();
         services.AddSingleton<ISecretDecryptor>(provider => provider.GetRequiredService<ISecretEncryptor>());
@@ -49,8 +55,17 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IIdempotencyCheck, IdempotencyCheck>();
         services.AddScoped<IRequestService, RequestService>();
+        services.AddScoped<ICallbackAvailability, CallbackAvailability>();
         services.AddScoped<IRequestHandler, RequestHandler>();
         services.AddScoped<IRequestStatusService, RequestStatusService>();
+
+        services.AddScoped<IRequestAttemptLog, RequestAttemptLog>();
+        services.AddScoped<IEngineerStatsCollector, EngineerStatsCollector>();
+        services.AddScoped<ICallbackDelivery, CallbackDelivery>();
+        services.AddScoped<IRequestWorker, RequestWorker>();
+        services.AddScoped<IStaleRequestSweeper, StaleRequestSweeper>();
+        services.AddScoped<IProcessingPreflight, ProcessingPreflight>();
+        services.AddScoped<IRequestProcessor, RequestProcessor>();
         return services;
     }
 }

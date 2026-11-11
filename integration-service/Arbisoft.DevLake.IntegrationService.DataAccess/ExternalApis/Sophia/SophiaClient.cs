@@ -76,13 +76,23 @@ public sealed class SophiaClient : ISophiaClient
         return result;
     }
 
-    private async Task<Target> ResolveTargetAsync(long clientRefId, string eventType, CancellationToken cancellationToken)
+    public async Task EnsureAccessTokenAsync(long clientRefId, string correlationId, CancellationToken cancellationToken)
+    {
+        var config = await ActiveConfigAsync(clientRefId, cancellationToken);
+        await GetAccessTokenAsync(config, TokenKeyOf(config), correlationId, cancellationToken);
+    }
+
+    private async Task<ClientConfig> ActiveConfigAsync(long clientRefId, CancellationToken cancellationToken)
     {
         var config = await _configs.GetByClientRefIdAsync(clientRefId, cancellationToken);
-        if (config is not { IsActive: true })
-        {
-            throw new CallbackNotConfiguredException("The client has no active outbound configuration.");
-        }
+        return config is { IsActive: true } ? config : throw new CallbackNotConfiguredException("The client has no active outbound configuration.");
+    }
+
+    private static string TokenKeyOf(ClientConfig config) => $"{config.Id}:{(config.ModifiedOn ?? config.CreatedOn).UtcTicks}";
+
+    private async Task<Target> ResolveTargetAsync(long clientRefId, string eventType, CancellationToken cancellationToken)
+    {
+        var config = await ActiveConfigAsync(clientRefId, cancellationToken);
 
         var url = await _configs.GetActiveOutboundUrlAsync(config.Id, eventType, cancellationToken)
             ?? throw new CallbackNotConfiguredException("The client has no active callback URL for this event type.");
@@ -92,13 +102,12 @@ public sealed class SophiaClient : ISophiaClient
             throw new CallbackNotConfiguredException($"The callback method '{url.Method}' is not supported.");
         }
 
-        var tokenKey = $"{config.Id}:{(config.ModifiedOn ?? config.CreatedOn).UtcTicks}";
-        return new Target(config, OutboundUrl.Combine(config.BaseUrl, url.Path), new HttpMethod(url.Method.ToUpperInvariant()), tokenKey);
+        return new Target(config, OutboundUrl.Combine(config.BaseUrl, url.Path), new HttpMethod(url.Method.ToUpperInvariant()), TokenKeyOf(config));
     }
 
     private async Task<SophiaDeliveryResult> SendOnceAsync(Target target, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        var accessToken = await GetAccessTokenAsync(target, correlationId, cancellationToken);
+        var accessToken = await GetAccessTokenAsync(target.Config, target.TokenKey, correlationId, cancellationToken);
 
         using var request = new HttpRequestMessage(target.Method, target.Endpoint)
         {
@@ -120,9 +129,8 @@ public sealed class SophiaClient : ISophiaClient
         return new SophiaDeliveryResult(response.IsSuccessStatusCode, (int)response.StatusCode, stored);
     }
 
-    private async Task<string> GetAccessTokenAsync(Target target, string correlationId, CancellationToken cancellationToken)
+    private async Task<string> GetAccessTokenAsync(ClientConfig config, string tokenKey, string correlationId, CancellationToken cancellationToken)
     {
-        var config = target.Config;
         if (config.AuthType == ClientConfigAuthType.ApiToken)
         {
             return StaticApiToken(config);
@@ -134,7 +142,7 @@ public sealed class SophiaClient : ISophiaClient
             throw new CallbackNotConfiguredException("The outbound configuration is missing its token URL, client ID or client secret.");
         }
 
-        return await _tokenCache.GetOrFetchAsync(target.TokenKey, token => FetchTokenAsync(config, correlationId, token), cancellationToken);
+        return await _tokenCache.GetOrFetchAsync(tokenKey, token => FetchTokenAsync(config, correlationId, token), cancellationToken);
     }
 
     private string StaticApiToken(ClientConfig config)

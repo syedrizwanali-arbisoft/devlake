@@ -58,6 +58,20 @@ public sealed class RequestQueueConsumer : IRequestQueueConsumer
         }
     }
 
+    public async Task<int> GetDepthAsync(CancellationToken cancellationToken)
+    {
+        await using var channel = await _connection.CreateChannelAsync(publisherConfirms: false, cancellationToken);
+        try
+        {
+            var queue = await channel.QueueDeclarePassiveAsync(_options.RequestQueueName, cancellationToken);
+            return checked((int)queue.MessageCount);
+        }
+        catch (Exception exception) when (exception is AlreadyClosedException or OperationInterruptedException or IOException)
+        {
+            throw new QueueUnavailableException("The connection to the broker was lost while checking the queue.", exception);
+        }
+    }
+
     private async Task<List<QueueDelivery>> ReadAsync(IChannel channel, int limit, CancellationToken cancellationToken)
     {
         var deliveries = new List<QueueDelivery>(limit);

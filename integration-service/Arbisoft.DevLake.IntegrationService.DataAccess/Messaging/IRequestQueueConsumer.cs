@@ -23,6 +23,13 @@ public interface IRequestQueueConsumer
     /// </summary>
     /// <exception cref="QueueUnavailableException">The broker could not be reached.</exception>
     Task<IQueueBatch> ReceiveAsync(int maxMessages, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// How many messages are waiting in the queue. A cheap check that does not take any message, so it does not raise a message's delivery count.
+    /// Also the queue-depth figure to publish as a metric.
+    /// </summary>
+    /// <exception cref="QueueUnavailableException">The broker could not be reached.</exception>
+    Task<int> GetDepthAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>

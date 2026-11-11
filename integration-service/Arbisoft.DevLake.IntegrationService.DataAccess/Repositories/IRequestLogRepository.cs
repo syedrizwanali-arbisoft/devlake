@@ -51,6 +51,12 @@ public interface IRequestLogRepository
     /// <summary>Requests with the given status created at or after <paramref name="since"/>, oldest first, at most <paramref name="limit"/>.</summary>
     Task<IReadOnlyList<RequestLog>> ListByStatusSinceAsync(string status, DateTimeOffset since, int limit, CancellationToken cancellationToken);
 
+    /// <summary>Requests in any of the given statuses that were created before <paramref name="createdBefore"/>, oldest first, at most <paramref name="limit"/>.</summary>
+    Task<IReadOnlyList<RequestLog>> ListStaleAsync(IReadOnlyCollection<string> statuses, DateTimeOffset createdBefore, int limit, CancellationToken cancellationToken);
+
+    /// <summary>The ids of the clients that have requests waiting or in progress, so a check can be limited to clients that actually have work.</summary>
+    Task<IReadOnlyList<long>> GetClientsWithPendingRequestsAsync(CancellationToken cancellationToken);
+
     Task<PagedResult<RequestLog>> ListAsync(RequestLogFilter filter, int page, int pageSize, CancellationToken cancellationToken);
 
     Task<long> InsertAttemptAsync(RequestResponseAttempt attempt, CancellationToken cancellationToken);

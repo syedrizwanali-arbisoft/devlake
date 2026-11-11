@@ -22,6 +22,15 @@ namespace Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis.Sophia;
 public interface ISophiaClient
 {
     /// <summary>
+    /// Makes sure an access token for the client can be obtained, fetching and caching one if needed. The processing job calls this before it
+    /// takes work off the queue, so a problem with the credentials leaves requests queued instead of failing them.
+    /// </summary>
+    /// <exception cref="CallbackNotConfiguredException">The client has no active outbound config.</exception>
+    /// <exception cref="ExternalAuthenticationException">A token could not be obtained.</exception>
+    /// <exception cref="ExternalApiUnavailableException">Sophia could not be reached.</exception>
+    Task EnsureAccessTokenAsync(long clientRefId, string correlationId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Posts a result to the client's callback URL for <paramref name="eventType"/>. The access token is fetched when needed and reused until it
     /// expires; if Sophia rejects a cached token it is replaced once and the call repeated.
     /// </summary>

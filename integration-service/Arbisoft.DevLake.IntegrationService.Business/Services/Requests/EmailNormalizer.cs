@@ -27,7 +27,7 @@ public static partial class EmailNormalizer
     /// <summary>Trims and lower-cases <paramref name="raw"/> and checks it is a well-formed address in one of <paramref name="allowedDomains"/>.</summary>
     public static bool TryNormalize(string? raw, IEnumerable<string> allowedDomains, out string normalized, out string? error)
     {
-        normalized = (raw ?? string.Empty).Trim().ToLowerInvariant();
+        normalized = Canonical(raw ?? string.Empty);
 
         if (normalized.Length == 0)
         {
@@ -51,6 +51,12 @@ public static partial class EmailNormalizer
         error = null;
         return true;
     }
+
+    /// <summary>
+    /// The canonical form of an address: trimmed and lower-cased with the invariant culture. For addresses that were stored by this service and
+    /// so are known to be well formed, such as the mapped emails an engineer commits with, which are not in the allowed domains.
+    /// </summary>
+    public static string Canonical(string raw) => raw.Trim().ToLowerInvariant();
 
     /// <summary>Normalizes an address that has already been validated. Throws if it is not valid, which means validation was skipped.</summary>
     public static string Normalize(string raw, IEnumerable<string> allowedDomains)

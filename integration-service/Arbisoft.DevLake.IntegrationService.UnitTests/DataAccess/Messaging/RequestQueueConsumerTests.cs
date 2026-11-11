@@ -158,6 +158,27 @@ public class RequestQueueConsumerTests
     }
 
     [Fact]
+    public async Task GetDepth_ReportsTheMessagesWaiting_WithoutTakingAny()
+    {
+        _channel.QueueDeclarePassiveAsync("q", Arg.Any<CancellationToken>()).Returns(new QueueDeclareOk("q", 12, 0));
+
+        var depth = await _consumer.GetDepthAsync(CancellationToken.None);
+
+        Assert.Equal(12, depth);
+        await _channel.DidNotReceiveWithAnyArgs().BasicGetAsync(default!, default, default);
+        await _channel.Received(1).DisposeAsync();
+    }
+
+    [Fact]
+    public async Task GetDepth_WhenTheBrokerIsLost_ThrowsQueueUnavailable()
+    {
+        _channel.QueueDeclarePassiveAsync("q", Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<QueueDeclareOk>(new AlreadyClosedException(new ShutdownEventArgs(ShutdownInitiator.Peer, 320, "gone"))));
+
+        await Assert.ThrowsAsync<QueueUnavailableException>(() => _consumer.GetDepthAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Batch_AckRequeueAndDeadLetter_MapToTheMatchingBrokerCalls()
     {
         Queue(Result(1, 1), Result(2, 1), Result(3, 1));
