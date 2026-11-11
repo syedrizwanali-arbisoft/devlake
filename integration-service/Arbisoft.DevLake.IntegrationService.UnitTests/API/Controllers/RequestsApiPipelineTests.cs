@@ -17,6 +17,7 @@ using System.Net;
 using System.Text.Json;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
+using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers.Builders;
 using NSubstitute;
 
 namespace Arbisoft.DevLake.IntegrationService.UnitTests.API.Controllers;
@@ -31,7 +32,7 @@ public sealed class RequestsApiPipelineTests : IDisposable
     {
         _host.RequestLogs.GetByCorrelationIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((RequestLog?)null);
         _host.RequestLogs.GetByCorrelationIdAsync(Id, Arg.Any<CancellationToken>())
-            .Returns(new RequestLog { ClientRefId = 1, CorrelationId = Id, Status = RequestLogStatus.Processed });
+            .Returns(new RequestLogBuilder().WithCorrelationId(Id).WithStatus(RequestLogStatus.Processed).Build());
     }
 
     public void Dispose() => _host.Dispose();

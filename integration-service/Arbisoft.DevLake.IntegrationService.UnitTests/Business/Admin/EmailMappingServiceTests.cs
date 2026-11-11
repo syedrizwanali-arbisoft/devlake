@@ -77,4 +77,23 @@ public class EmailMappingServiceTests
     {
         Assert.Equal(expected, (await _service.ListAsync(search)).Count);
     }
+
+    [Fact]
+    public async Task Get_MapsTheMappingOrReturnsNull()
+    {
+        _mappings.GetByIdAsync(99, Arg.Any<CancellationToken>()).Returns((EmailMapping?)null);
+
+        Assert.Equal("abc@gmail.com", (await _service.GetAsync(1))!.Email);
+        Assert.Null(await _service.GetAsync(99));
+    }
+
+    [Fact]
+    public async Task Update_RejectsAnUnknownMappingAndInvalidEmails()
+    {
+        _mappings.GetByIdAsync(99, Arg.Any<CancellationToken>()).Returns((EmailMapping?)null);
+
+        Assert.Contains("not found", (await _service.UpdateAsync(99, "abc@arbisoft.com", "x@gmail.com")).Error);
+        Assert.Contains("@arbisoft.com", (await _service.UpdateAsync(1, "abc@gmail.com", "x@gmail.com")).Error);
+        await _mappings.DidNotReceiveWithAnyArgs().UpdateAsync(default!, default);
+    }
 }

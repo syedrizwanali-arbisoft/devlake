@@ -18,6 +18,7 @@ using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis.Sophia;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
+using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers.Builders;
 using NSubstitute;
 
 namespace Arbisoft.DevLake.IntegrationService.UnitTests.Business.Requests;
@@ -27,12 +28,7 @@ public class CallbackTargetResolverTests
     private readonly IClientConfigRepository _configs = Substitute.For<IClientConfigRepository>();
     private readonly ISecretEncryptor _encryptor = Substitute.For<ISecretEncryptor>();
     private readonly CallbackTargetResolver _resolver;
-    private readonly ClientConfig _config = new()
-    {
-        Id = 5, ClientRefId = 1, AuthType = ClientConfigAuthTypes.OAuth2ClientCredentials, BaseUrl = "https://sophia.test/",
-        TokenUrl = "/oauth2/token/", OutboundClientId = "devlake", OutboundClientSecretEncrypted = "v1:enc", OutboundScope = "s",
-        MaxAttempts = 3, IsActive = true,
-    };
+    private readonly ClientConfig _config = new ClientConfigBuilder().Build();
 
     public CallbackTargetResolverTests()
     {

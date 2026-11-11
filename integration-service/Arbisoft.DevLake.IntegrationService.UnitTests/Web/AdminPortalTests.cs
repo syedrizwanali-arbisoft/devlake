@@ -321,6 +321,182 @@ public sealed partial class AdminPortalTests : IDisposable
         Assert.Contains("&lt;script&gt;", html);
     }
 
+    private static readonly DateTime When = new(2026, 11, 10, 9, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task ListPages_RenderTheirRows()
+    {
+        _clients.ListAsync(Arg.Any<CancellationToken>()).Returns([new ClientDto(1, "sophia-stage", "Sophia (Stage)", true, 3600, When, "admin", null, null)]);
+        _scopes.ListAsync(Arg.Any<CancellationToken>()).Returns([new ScopeDto(1, "stats:read", "Read engineer stats", When)]);
+        _signingKeys.ListAsync(Arg.Any<CancellationToken>()).Returns([new SigningKeyDto(1, "key-20261110", "RS256", "signing-key-1", When, null, When, "Active")]);
+        _accessTokens.ListRecentAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(
+            [new AccessTokenDto("jti-9", "sophia-stage", "Sophia (Stage)", "stats:read", When, When.AddHours(1), null, null, "10.0.0.1", "Active")]);
+        _emailMappings.ListAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([new EmailMappingDto(1, "abc@arbisoft.com", "abc@gmail.com", When)]);
+        _requestLogs.SearchAsync(default!).ReturnsForAnyArgs(new RequestLogPage(
+            [new RequestLogDto(1, "corr-77", 1, "sophia-stage", "Sophia (Stage)", "/u", "Success", "engineer-stats", When)], 1, 1, 50));
+        await SignInAsync();
+
+        foreach (var (path, expected) in new[]
+        {
+            ("/Clients", "sophia-stage"), ("/Scopes", "stats:read"), ("/SigningKeys", "key-20261110"),
+            ("/AccessTokens", "jti-9"), ("/EmailMappings", "abc@gmail.com"), ("/RequestLogs", "corr-77"), ("/", "Integration Service Admin"),
+        })
+        {
+            using var response = await _http.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains(expected, WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync()));
+        }
+    }
+
+    [Theory]
+    [InlineData("/Clients/Details/99")]
+    [InlineData("/Clients/Edit/99")]
+    [InlineData("/Clients/99/Secrets/Create")]
+    [InlineData("/Scopes/Edit/99")]
+    [InlineData("/EmailMappings/Edit/99")]
+    [InlineData("/ClientConfigs/Edit/99")]
+    [InlineData("/ClientConfigs/99/OutboundUrls")]
+    [InlineData("/ClientConfigs/1/OutboundUrls/99/Edit")]
+    [InlineData("/RequestLogs/Details/99")]
+    [InlineData("/AccessTokens/Revoke/missing")]
+    public async Task UnknownRecords_Return404(string path)
+    {
+        _clients.GetAsync(99, Arg.Any<CancellationToken>()).Returns((ClientDetailsDto?)null);
+        _scopes.GetAsync(99, Arg.Any<CancellationToken>()).Returns((ScopeDto?)null);
+        _emailMappings.GetAsync(99, Arg.Any<CancellationToken>()).Returns((EmailMappingDto?)null);
+        _clientConfigs.ListOutboundUrlsAsync(1, Arg.Any<CancellationToken>()).Returns([]);
+        _requestLogs.GetAsync(99, Arg.Any<CancellationToken>()).Returns((RequestLogDetailsDto?)null);
+        _accessTokens.GetAsync("missing", Arg.Any<CancellationToken>()).Returns((AccessTokenDto?)null);
+        await SignInAsync();
+
+        using var response = await _http.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task EditScope_LoadsTheFormAndSaves()
+    {
+        _scopes.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new ScopeDto(1, "stats:read", "Old text", When));
+        _scopes.UpdateAsync(default, default!, default!).ReturnsForAnyArgs(AdminResult.Ok);
+        await SignInAsync();
+
+        Assert.Contains("Old text", await _http.GetStringAsync("/Scopes/Edit/1"));
+        using var response = await PostFormAsync("/Scopes/Edit/1", ("Name", "stats:read"), ("Description", "New text"));
+
+        Assert.Equal("/Scopes", response.Headers.Location!.OriginalString);
+        await _scopes.Received(1).UpdateAsync(1, "stats:read", "New text", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateScope_ShowsTheServiceError()
+    {
+        _scopes.CreateAsync(default!, default!).ReturnsForAnyArgs(AdminResult<long>.Fail("A scope named 'stats:read' already exists."));
+        await SignInAsync();
+
+        using var response = await PostFormAsync("/Scopes/Create", ("Name", "stats:read"), ("Description", "x"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("already exists", WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync()));
+    }
+
+    [Fact]
+    public async Task EditEmailMapping_LoadsTheFormAndSaves()
+    {
+        _emailMappings.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new EmailMappingDto(1, "abc@arbisoft.com", "abc@gmail.com", When));
+        _emailMappings.UpdateAsync(default, default!, default!).ReturnsForAnyArgs(AdminResult.Ok);
+        await SignInAsync();
+
+        Assert.Contains("abc@gmail.com", await _http.GetStringAsync("/EmailMappings/Edit/1"));
+        using var response = await PostFormAsync("/EmailMappings/Edit/1", ("ArbisoftEmail", "abc@arbisoft.com"), ("Email", "abc@outlook.com"));
+
+        Assert.Equal("/EmailMappings", response.Headers.Location!.OriginalString);
+        await _emailMappings.Received(1).UpdateAsync(1, "abc@arbisoft.com", "abc@outlook.com", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OutboundUrls_ListAndEdit()
+    {
+        _clients.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientDetailsDto(
+            new ClientDto(1, "sophia", "Sophia", true, 3600, When, "admin", null, null), [], [], []));
+        _clientConfigs.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientConfigDto(
+            5, 1, "oauth2", "https://sophia.test/", "/oauth2/token/", "devlake", true, null, false, null, When, 3, true, When, "admin", null, null));
+        _clientConfigs.ListOutboundUrlsAsync(1, Arg.Any<CancellationToken>()).Returns(
+            [new ClientConfigOutboundUrlDto(9, 5, "engineer-stats", "POST", "/api/v1/devlake/callback/", true, When, "admin", null, null)]);
+        _clientConfigs.UpdateOutboundUrlAsync(default, default, default!, default!).ReturnsForAnyArgs(AdminResult.Fail("There is already an active URL for 'engineer-stats'. Deactivate it first."));
+        await SignInAsync();
+
+        Assert.Contains("/api/v1/devlake/callback/", await _http.GetStringAsync("/ClientConfigs/1/OutboundUrls"));
+        Assert.Contains("/api/v1/devlake/callback/", await _http.GetStringAsync("/ClientConfigs/1/OutboundUrls/9/Edit"));
+        using var response = await PostFormAsync("/ClientConfigs/1/OutboundUrls/9/Edit",
+            ("Form.EventType", "engineer-stats"), ("Form.Method", "PUT"), ("Form.Path", "/cb"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("already an active URL", WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync()));
+        await _clientConfigs.Received(1).UpdateOutboundUrlAsync(1, 9, new OutboundUrlInput("engineer-stats", "PUT", "/cb", true), "admin", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RevokeSecret_ConfirmsThenRevokes()
+    {
+        _clients.RevokeSecretAsync(1, 5, Arg.Any<CancellationToken>()).Returns(AdminResult.Ok);
+        await SignInAsync();
+
+        Assert.Contains("Revoke secret 5", await _http.GetStringAsync("/Clients/1/Secrets/5/Revoke"));
+        await _clients.DidNotReceiveWithAnyArgs().RevokeSecretAsync(default, default, default);
+        using var response = await PostFormAsync("/Clients/1/Secrets/5/Revoke");
+
+        Assert.Equal("/Clients/Details/1", response.Headers.Location!.OriginalString);
+        await _clients.Received(1).RevokeSecretAsync(1, 5, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RevokeToken_ShowsTheServiceError()
+    {
+        _accessTokens.GetAsync("jti-1", Arg.Any<CancellationToken>()).Returns(
+            new AccessTokenDto("jti-1", "sophia", "Sophia", "stats:read", When, When.AddHours(1), null, null, "::1", "Active"));
+        _accessTokens.RevokeAsync(default!, default!, default!).ReturnsForAnyArgs(AdminResult.Fail("A reason of up to 900 characters is required."));
+        await SignInAsync();
+
+        using var response = await PostFormAsync("/AccessTokens/Revoke/jti-1", ("Reason", ""));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("A reason of up to 900 characters is required.", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task ClientDetails_ShowsTheOutboundConfigAndScopes()
+    {
+        _clients.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientDetailsDto(
+            new ClientDto(1, "sophia", "Sophia", true, 3600, When, "admin", When, "admin2"),
+            [new ClientSecretDto(4, When.AddDays(30), null, When, When, "admin", "Active")],
+            [new ScopeDto(1, "stats:read", "d", When)],
+            [new ScopeDto(1, "stats:read", "d", When), new ScopeDto(2, "projects:fetch", "d", When)]));
+        _clientConfigs.GetAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientConfigDto(
+            5, 1, "api_token", "https://other.test/", null, null, false, null, true, null, When, 3, true, When, "admin", null, null));
+        _clientConfigs.ListOutboundUrlsAsync(1, Arg.Any<CancellationToken>()).Returns(
+            [new ClientConfigOutboundUrlDto(9, 5, "engineer-stats", "POST", "/cb", true, When, "admin", null, null)]);
+        await SignInAsync();
+
+        var html = WebUtility.HtmlDecode(await _http.GetStringAsync("/Clients/Details/1"));
+
+        Assert.Contains("Static API token", html);
+        Assert.Contains("1 configured", html);
+        Assert.Contains("projects:fetch", html);
+        Assert.Contains("by admin2", html);
+    }
+
+    [Fact]
+    public async Task Logout_GetOnlyRedirectsHome()
+    {
+        await SignInAsync();
+
+        using var response = await _http.GetAsync("/Account/Logout");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _http.GetAsync("/Clients")).StatusCode);
+    }
+
     [Fact]
     public async Task SignOut_EndsTheSession()
     {

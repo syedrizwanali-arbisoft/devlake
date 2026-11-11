@@ -24,7 +24,7 @@ namespace Arbisoft.DevLake.IntegrationService.UnitTests.Business.Admin;
 
 public class AccessTokenServiceTests
 {
-    private static readonly DateTime Now = new(2026, 11, 10, 9, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Now = AccessTokenBuilder.Now;
 
     private readonly IAccessTokenRepository _tokens = Substitute.For<IAccessTokenRepository>();
     private readonly IClientRepository _clients = Substitute.For<IClientRepository>();
@@ -34,8 +34,8 @@ public class AccessTokenServiceTests
     {
         _clients.GetAllAsync(Arg.Any<CancellationToken>()).Returns([new ClientBuilder().Build()]);
         _tokens.GetByJtiAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((AccessToken?)null);
-        _tokens.GetByJtiAsync("live", Arg.Any<CancellationToken>()).Returns(new AccessToken { Jti = "live", ClientRefId = 1, ExpiresOn = Now.AddHours(1) });
-        _tokens.GetByJtiAsync("gone", Arg.Any<CancellationToken>()).Returns(new AccessToken { Jti = "gone", RevokedOn = Now });
+        _tokens.GetByJtiAsync("live", Arg.Any<CancellationToken>()).Returns(new AccessTokenBuilder().WithJti("live").Build());
+        _tokens.GetByJtiAsync("gone", Arg.Any<CancellationToken>()).Returns(new AccessTokenBuilder().WithJti("gone").Revoked().Build());
         _service = new AccessTokenService(_tokens, _clients, new FakeTimeProvider(new DateTimeOffset(Now)));
     }
 
@@ -43,9 +43,9 @@ public class AccessTokenServiceTests
     public async Task ListRecent_ShowsTheClientAndStatus()
     {
         _tokens.GetRecentAsync(200, Arg.Any<CancellationToken>()).Returns([
-            new AccessToken { Jti = "a", ClientRefId = 1, ExpiresOn = Now.AddHours(1) },
-            new AccessToken { Jti = "b", ClientRefId = 1, ExpiresOn = Now.AddHours(-1) },
-            new AccessToken { Jti = "c", ClientRefId = 99, ExpiresOn = Now.AddHours(1), RevokedOn = Now }]);
+            new AccessTokenBuilder().WithJti("a").Build(),
+            new AccessTokenBuilder().WithJti("b").Expired().Build(),
+            new AccessTokenBuilder().WithJti("c").ForClient(99).Revoked().Build()]);
 
         var tokens = await _service.ListRecentAsync(200);
 
@@ -72,5 +72,16 @@ public class AccessTokenServiceTests
 
         Assert.Contains(mentions, result.Error);
         await _tokens.DidNotReceiveWithAnyArgs().RevokeAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsTheTokenWithItsClientOrNull()
+    {
+        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientBuilder().Build());
+
+        var token = await _service.GetAsync("live");
+
+        Assert.Equal(("live", "sophia", "Active"), (token!.Jti, token.ClientId, token.Status));
+        Assert.Null(await _service.GetAsync("missing"));
     }
 }

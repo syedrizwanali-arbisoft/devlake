@@ -163,4 +163,37 @@ public class ClientServiceTests
         Assert.Equal(["stats:read"], details.AssignedScopes.Select(s => s.Name));
         Assert.Equal(2, details.AllScopes.Count);
     }
+
+    [Fact]
+    public async Task ListAndGet_MapTheClients()
+    {
+        _clients.GetAllAsync(Arg.Any<CancellationToken>()).Returns([new ClientBuilder().Build()]);
+        _clients.GetByIdAsync(99, Arg.Any<CancellationToken>()).Returns((Client?)null);
+
+        Assert.Equal(["sophia"], (await _service.ListAsync()).Select(c => c.ClientId));
+        Assert.Null(await _service.GetAsync(99));
+    }
+
+    [Fact]
+    public async Task ChangesToAnUnknownClientFail()
+    {
+        _clients.GetByIdAsync(99, Arg.Any<CancellationToken>()).Returns((Client?)null);
+
+        Assert.Contains("not found", (await _service.UpdateAsync(99, new ClientInput("x", "Name", true, 3600), "admin")).Error);
+        Assert.Contains("not found", (await _service.CreateSecretAsync(99, 30, "admin")).Error);
+        Assert.Contains("not found", (await _service.SetScopesAsync(99, [1], "admin")).Error);
+        await _clients.DidNotReceiveWithAnyArgs().UpdateAsync(default!, default);
+        await _clients.DidNotReceiveWithAnyArgs().AddSecretAsync(default!, default);
+    }
+
+    [Theory]
+    [InlineData("", 3600)]
+    [InlineData("Valid name", 30)]
+    public async Task Update_ValidatesBeforeLoading(string name, int lifetime)
+    {
+        var result = await _service.UpdateAsync(1, new ClientInput("sophia", name, true, lifetime), "admin");
+
+        Assert.False(result.Succeeded);
+        await _clients.DidNotReceiveWithAnyArgs().GetByIdAsync(default, default);
+    }
 }

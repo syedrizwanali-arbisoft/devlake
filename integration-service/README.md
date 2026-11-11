@@ -148,3 +148,12 @@ Secrets come from environment variables, never from `appsettings.json`.
 ```sh
 dotnet test
 ```
+
+The repository tests run the SQL against a real MySQL with the real migrations. They are skipped unless `INTEGRATION_TEST_MYSQL` holds a connection string for a user that can create databases. Each run creates its own `integration_test_*` database and drops it afterwards. To run them against the compose MySQL:
+
+```sh
+export INTEGRATION_TEST_MYSQL="Server=127.0.0.1;Port=3308;User ID=root;Password=<INTEGRATION_DB_ROOT_PASSWORD>"
+dotnet test
+```
+
+CI starts a MySQL service for them and uploads a Cobertura coverage report (`--collect "Code Coverage;Format=cobertura"`).

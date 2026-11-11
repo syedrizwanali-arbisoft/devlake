@@ -49,12 +49,10 @@ public class ClientConfigServiceTests
     private static ClientConfigInput OAuth(string? secret = "s3cret") => new(
         "oauth2", "https://sophia.test/", "/oauth2/token/", "devlake-stage", secret, "stats.write", null, null, 3, true);
 
-    private ClientConfig Existing(string authType = "oauth2") => new()
-    {
-        Id = 5, ClientRefId = 1, AuthType = authType, BaseUrl = "https://old.test/", TokenUrl = "/t", OutboundClientId = "old",
-        OutboundClientSecretEncrypted = authType == "oauth2" ? "enc(old)" : null, ApiTokenEncrypted = authType == "api_token" ? "enc(tok)" : null,
-        TokenRotatedOn = Now.AddDays(-30), MaxAttempts = 2, IsActive = true, CreatedOn = Now.AddDays(-60), CreatedBy = "first",
-    };
+    private static ClientConfig Existing(string authType = "oauth2") =>
+        authType == "oauth2"
+            ? new ClientConfigBuilder().WithEncryptedSecret("enc(old)").Build()
+            : new ClientConfigBuilder().WithStaticToken("enc(tok)").Build();
 
     [Fact]
     public async Task Save_CreatesAConfigWithTheSecretEncrypted()
@@ -79,7 +77,7 @@ public class ClientConfigServiceTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("enc(old)", _saved!.OutboundClientSecretEncrypted);
-        Assert.Equal(Now.AddDays(-30), _saved.TokenRotatedOn);
+        Assert.Equal(new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), _saved.TokenRotatedOn);
         Assert.Equal("admin2", _saved.ModifiedBy);
         Assert.Equal("first", _saved.CreatedBy);
         _encryptor.DidNotReceiveWithAnyArgs().Encrypt(default!);
@@ -194,5 +192,27 @@ public class ClientConfigServiceTests
         _configs.GetByClientRefIdAsync(1, Arg.Any<CancellationToken>()).Returns(Existing());
 
         Assert.Contains("not found", (await _service.UpdateOutboundUrlAsync(1, 99, new OutboundUrlInput("e", "POST", "/x", true), "a")).Error);
+    }
+
+    [Fact]
+    public async Task Save_RejectsAnUnknownClient()
+    {
+        _clients.GetByIdAsync(99, Arg.Any<CancellationToken>()).Returns((Client?)null);
+
+        Assert.Contains("not found", (await _service.SaveAsync(99, OAuth(), "admin")).Error);
+        await _configs.DidNotReceiveWithAnyArgs().AddAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task ListOutboundUrls_MapsTheConfigsUrlsOrIsEmpty()
+    {
+        Assert.Empty(await _service.ListOutboundUrlsAsync(1));
+
+        _configs.GetByClientRefIdAsync(1, Arg.Any<CancellationToken>()).Returns(Existing());
+        _configs.GetOutboundUrlsAsync(5, Arg.Any<CancellationToken>()).Returns([
+            new ClientConfigOutboundUrl { Id = 9, ClientConfigId = 5, EventType = "engineer-stats", Method = "POST", Path = "/cb", IsActive = true, CreatedBy = "admin" }]);
+
+        var url = Assert.Single(await _service.ListOutboundUrlsAsync(1));
+        Assert.Equal((9L, "engineer-stats", "POST", "/cb", true, "admin"), (url.Id, url.EventType, url.Method, url.Path, url.IsActive, url.CreatedBy));
     }
 }

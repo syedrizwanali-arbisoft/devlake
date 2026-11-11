@@ -62,4 +62,25 @@ public class ScopeServiceTests
         Assert.True((await _service.UpdateAsync(1, "stats:read", "new description")).Succeeded);
         await _scopes.Received(1).UpdateAsync(Arg.Is<Scope>(s => s.Description == "new description"), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task ListAndGet_MapTheScopes()
+    {
+        _scopes.GetByIdAsync(99, Arg.Any<CancellationToken>()).Returns((Scope?)null);
+
+        Assert.Equal(["stats:read"], (await _service.ListAsync()).Select(s => s.Name));
+        Assert.Equal("stats:read", (await _service.GetAsync(1))!.Name);
+        Assert.Null(await _service.GetAsync(99));
+    }
+
+    [Fact]
+    public async Task Update_RejectsUnknownScopesBadNamesAndLongDescriptions()
+    {
+        _scopes.GetByIdAsync(99, Arg.Any<CancellationToken>()).Returns((Scope?)null);
+
+        Assert.Contains("not found", (await _service.UpdateAsync(99, "x:y", "d")).Error);
+        Assert.Contains("lowercase", (await _service.UpdateAsync(1, "Bad Name", "d")).Error);
+        Assert.Contains("1024", (await _service.CreateAsync("new:scope", new string('x', 1025))).Error);
+        await _scopes.DidNotReceiveWithAnyArgs().UpdateAsync(default!, default);
+    }
 }

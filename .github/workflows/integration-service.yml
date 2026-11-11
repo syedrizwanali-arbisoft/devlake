@@ -30,6 +30,21 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      # A throwaway MySQL for the repository tests. They create and drop their own database on it.
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pci-only-password --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      INTEGRATION_TEST_MYSQL: "Server=127.0.0.1;Port=3306;User ID=root;Password=ci-only-password"
     defaults:
       run:
         working-directory: integration-service
@@ -44,4 +59,11 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
     - name: Test
-      run: dotnet test --no-build --configuration Release
+      run: dotnet test --no-build --configuration Release --collect "Code Coverage;Format=cobertura" --results-directory TestResults
+    - name: Upload coverage
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-service-coverage
+        path: integration-service/TestResults/**/*.cobertura.xml
+        if-no-files-found: warn

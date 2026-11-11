@@ -41,7 +41,7 @@ public class RequestStatusServiceTests
 
     private void Store(string status, long clientRefId = 1) =>
         _requestLogs.GetByCorrelationIdAsync(Id, Arg.Any<CancellationToken>())
-            .Returns(new RequestLog { ClientRefId = clientRefId, CorrelationId = Id, Status = status });
+            .Returns(new RequestLogBuilder().WithCorrelationId(Id).ForClient(clientRefId).WithStatus(status).Build());
 
     [Theory]
     [InlineData(RequestLogStatus.Received, "Queued")]
