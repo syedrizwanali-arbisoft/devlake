@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Admin;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Processing;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Projects;
@@ -54,6 +55,10 @@ public static class DependencyInjection
         services.AddScoped<ISigningKeyProvider, SigningKeyProvider>();
         services.AddScoped<ITokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IClientService, ClientService>();
+        services.AddScoped<IScopeService, ScopeService>();
+        services.AddScoped<ISigningKeyService, SigningKeyService>();
+        services.AddScoped<IAccessTokenService, AccessTokenService>();
         services.AddScoped<IIdempotencyCheck, IdempotencyCheck>();
         services.AddScoped<IRequestService, RequestService>();
         services.AddScoped<ICallbackAvailability, CallbackAvailability>();

@@ -58,6 +58,26 @@ Private signing keys are stored AES-256-GCM encrypted in the `SecretStoreEntries
 
 Health endpoints: `/health/live` and `/health/ready`. Readiness checks MySQL and RabbitMQ.
 
+## Admin portal
+
+The portal (`Arbisoft.DevLake.IntegrationService.Web`) manages the auth side of the service. It shares the API's database and the same `Database__*`, `RabbitMq__*` and `Security__*` settings, and it never processes requests. It signs in one admin account from configuration; the password is stored only as a hash:
+
+```sh
+echo -n "<password>" | dotnet run --project Arbisoft.DevLake.IntegrationService.Web -- hash-password   # prints the hash
+export Admin__Username=<name> Admin__PasswordHash=<hash>
+dotnet run --project Arbisoft.DevLake.IntegrationService.Web
+```
+
+Every page needs the sign-in (the fallback policy is deny), POSTs need an anti-forgery token, sign-in attempts are limited to 10 a minute per address, and the cookie is HttpOnly, SameSite=Strict and lasts 8 hours of activity. With no admin configured, nobody can sign in. Each change records the admin's name as `createdBy` or `modifiedBy`.
+
+- **Clients:** list, create, edit and view details, including the active flag and token lifetime (60 to 86,400 seconds). The Client ID never changes.
+- **Client secrets:** create one (1 to 730 days) and it is shown once; only a hash is stored. Revoke any of them. A client can hold several, so a secret can be rotated without downtime. Share new credentials through Passbolt.
+- **Scopes:** list, create and edit, and assign them to a client on its details page.
+- **Signing keys:** list the keys and rotate the active one. Rotation generates an RSA key, stores the private half encrypted, activates the new key and retires the old one in one transaction. Retired keys stay, so tokens already issued keep verifying until they expire.
+- **Access tokens:** list the 200 most recent and revoke one with a reason. The reason also records who revoked it, because the table has no "revoked by" column.
+
+Lists show at most 200 rows.
+
 ## Request queue
 
 Stats requests wait in a durable RabbitMQ quorum queue (`RabbitMq:RequestQueueName`). Messages are persistent, carry the correlation ID and a `schema-version` header, and are confirmed by the broker before the API answers.

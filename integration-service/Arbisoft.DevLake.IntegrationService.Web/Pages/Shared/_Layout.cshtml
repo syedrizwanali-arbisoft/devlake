@@ -6,7 +6,7 @@ The ASF licenses this file to You under the Apache License, Version 2.0
 (the "License"); you may not use this file except in compliance with
 the License.  You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+    http:www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,52 +14,76 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 *@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Integration Service</title>
-    <script type="importmap"></script>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/Integration Service.styles.css" asp-append-version="true" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@ViewData["Title"] · Integration Service Admin</title>
+  <style>
+    :root { --bg:#f7f7f8; --panel:#fff; --text:#1d1d1f; --muted:#6b6b73; --line:#e3e3e8; --accent:#2457d6; --danger:#b42318; --ok:#067647; }
+    @@media (prefers-color-scheme: dark) { :root { --bg:#141416; --panel:#1d1d20; --text:#ececf0; --muted:#9a9aa5; --line:#2e2e34; --accent:#7aa2ff; --danger:#ff8a80; --ok:#6ee7a8; } }
+    * { box-sizing: border-box; }
+    body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+    header { background:var(--panel); border-bottom:1px solid var(--line); }
+    nav { max-width:1100px; margin:0 auto; padding:10px 16px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+    nav .brand { font-weight:600; margin-right:auto; }
+    nav a { color:var(--text); text-decoration:none; }
+    nav a:hover { color:var(--accent); }
+    main { max-width:1100px; margin:0 auto; padding:24px 16px; }
+    h1 { font-size:22px; margin:0 0 16px; }
+    h2 { font-size:17px; margin:28px 0 10px; }
+    a { color:var(--accent); }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }
+    .table-wrap { overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { font-size:13px; color:var(--muted); font-weight:600; }
+    tr:last-child td { border-bottom:0; }
+    .muted { color:var(--muted); }
+    .mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; overflow-wrap:break-word; }
+    .mono.long { word-break:break-all; }
+    .badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
+    .badge.Active { color:var(--ok); border-color:var(--ok); }
+    .badge.Revoked, .badge.Inactive { color:var(--danger); border-color:var(--danger); }
+    form.stack { display:grid; gap:12px; max-width:520px; }
+    label { display:grid; gap:4px; font-weight:500; }
+    label.check { display:flex; gap:8px; align-items:center; font-weight:400; }
+    input[type=text], input[type=password], input[type=number], textarea { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--text); width:100%; }
+    button, .button { font:inherit; padding:7px 14px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; text-decoration:none; display:inline-block; }
+    button.secondary, .button.secondary { background:transparent; color:var(--accent); }
+    button.danger { background:var(--danger); border-color:var(--danger); }
+    button.link { background:none; border:0; color:var(--text); padding:0; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:12px 0 16px; }
+    .message { padding:10px 12px; border-radius:6px; border:1px solid var(--ok); color:var(--ok); margin-bottom:16px; }
+    .errors { padding:10px 12px; border-radius:6px; border:1px solid var(--danger); color:var(--danger); margin-bottom:16px; }
+    .errors ul { margin:0; padding-left:18px; }
+    .secret { padding:12px; border:2px dashed var(--accent); border-radius:8px; margin:12px 0; }
+    dl { display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0; }
+    dt { color:var(--muted); }
+  </style>
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container">
-                <a class="navbar-brand" asp-area="" asp-page="/Index">Integration Service</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-page="/Index">Home</a>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
-    </div>
-
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - Integration Service
-        </div>
-    </footer>
-
-    <script src="~/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
-
-    @await RenderSectionAsync("Scripts", required: false)
+  <header>
+    <nav>
+      <span class="brand">Integration Service Admin</span>
+      @if (User.Identity?.IsAuthenticated == true)
+      {
+          <a asp-page="/Clients/Index">Clients</a>
+          <a asp-page="/Scopes/Index">Scopes</a>
+          <a asp-page="/SigningKeys/Index">Signing keys</a>
+          <a asp-page="/AccessTokens/Index">Access tokens</a>
+          <form method="post" asp-page="/Account/Logout"><button class="link" type="submit">Sign out (@User.Identity.Name)</button></form>
+      }
+    </nav>
+  </header>
+  <main>
+    @if (TempData.Peek("Message") is string message)
+    {
+        <div class="message" role="status">@message</div>
+    }
+    <div asp-validation-summary="ModelOnly" class="errors"></div>
+    @RenderBody()
+  </main>
 </body>
 </html>

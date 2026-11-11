@@ -6,7 +6,7 @@ The ASF licenses this file to You under the Apache License, Version 2.0
 (the "License"); you may not use this file except in compliance with
 the License.  You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+    http:www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,12 +15,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *@
 @page
-@model IndexModel
 @{
-    ViewData["Title"] = "Integration Service";
+    ViewData["Title"] = "Home";
 }
-
-<div class="text-center">
-    <h1 class="display-4">Integration Service</h1>
-    <p>Admin portal for clients, scopes, signing keys, access tokens, email mappings and request logs.</p>
+<h1>Integration Service Admin</h1>
+<div class="panel">
+  <p>Manage who can call the Integration Service and how their tokens are signed.</p>
+  <ul>
+    <li><a asp-page="/Clients/Index">Clients</a>: registered systems, their secrets and scopes.</li>
+    <li><a asp-page="/Scopes/Index">Scopes</a>: permissions a token can carry.</li>
+    <li><a asp-page="/SigningKeys/Index">Signing keys</a>: the keys that sign tokens, and rotation.</li>
+    <li><a asp-page="/AccessTokens/Index">Access tokens</a>: issued tokens, and revocation.</li>
+  </ul>
 </div>
