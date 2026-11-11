@@ -18,6 +18,7 @@ using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Admin;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
+using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers.Builders;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 
@@ -37,7 +38,7 @@ public class ClientConfigServiceTests
     public ClientConfigServiceTests()
     {
         _encryptor.Encrypt(Arg.Any<string>()).Returns(call => "enc:" + call.Arg<string>());
-        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new Client { Id = 1, ClientId = "sophia", Name = "Sophia" });
+        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientBuilder().Build());
         _service = new ClientConfigService(_configs, _clients, _encryptor, new FakeTimeProvider(Now));
     }
 
@@ -47,22 +48,11 @@ public class ClientConfigServiceTests
     private static ClientConfigInput TokenInput(string? token = "tok", DateTimeOffset? expires = null) =>
         new(Token, "https://sophia.example.com", null, null, null, null, token, expires, 3, true);
 
-    private static ClientConfig Stored(string authType = OAuth) => new()
+    private static ClientConfig Stored(string authType = OAuth)
     {
-        Id = 4,
-        ClientRefId = 1,
-        AuthType = authType,
-        BaseUrl = "https://sophia.example.com",
-        TokenUrl = "https://sophia.example.com/oauth2/token/",
-        OutboundClientId = "devlake",
-        OutboundClientSecretEncrypted = authType == OAuth ? "enc:old" : null,
-        ApiTokenEncrypted = authType == Token ? "enc:oldtoken" : null,
-        TokenRotatedOn = Now.AddDays(-30),
-        MaxAttempts = 3,
-        IsActive = true,
-        CreatedOn = Now.AddDays(-60),
-        CreatedBy = "first"
-    };
+        var builder = new ClientConfigBuilder().WithId(4).WithEncryptedSecret("enc:old").RotatedOn(Now.AddDays(-30)).CreatedOn(Now.AddDays(-60), "first");
+        return authType == Token ? builder.WithApiToken("enc:oldtoken").Build() : builder.Build();
+    }
 
     [Fact]
     public async Task Save_ANewOAuthConfig_EncryptsTheSecret_AndRecordsWhoAndWhen()

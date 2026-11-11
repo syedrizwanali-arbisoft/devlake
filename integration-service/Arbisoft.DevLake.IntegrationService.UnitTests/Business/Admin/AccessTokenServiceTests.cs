@@ -16,6 +16,7 @@
 using Arbisoft.DevLake.IntegrationService.Business.Services.Admin;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
+using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers.Builders;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 
@@ -31,12 +32,15 @@ public class AccessTokenServiceTests
 
     public AccessTokenServiceTests()
     {
-        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new Client { Id = 1, ClientId = "sophia", Name = "Sophia" });
+        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientBuilder().Build());
         _service = new AccessTokenService(_tokens, _clients, new FakeTimeProvider(Now));
     }
 
-    private static AccessToken Token(long id, DateTimeOffset expiresOn, DateTimeOffset? revokedOn = null) =>
-        new() { Id = id, Jti = "jti-" + id, ClientRefId = 1, GrantedScopes = "stats:read", IssuedOn = Now.AddHours(-1), ExpiresOn = expiresOn, RevokedOn = revokedOn, IssuedToIp = "203.0.113.7" };
+    private static AccessToken Token(long id, DateTimeOffset expiresOn, DateTimeOffset? revokedOn = null)
+    {
+        var builder = new AccessTokenBuilder().WithId(id).WithJti("jti-" + id).Issued(Now.AddHours(-1), expiresOn - Now.AddHours(-1));
+        return (revokedOn is { } at ? builder.Revoked(at, "test") : builder).Build();
+    }
 
     [Fact]
     public async Task ListRecent_LabelsEachTokenAndLooksUpEachClientOnce()

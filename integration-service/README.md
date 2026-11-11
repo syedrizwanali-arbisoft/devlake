@@ -289,4 +289,6 @@ export INTEGRATION_TEST_RABBITMQ="host=127.0.0.1;port=5672;management=15672;user
 
 Each test creates its own throwaway database or queue and removes it afterwards.
 
+Test data builders for `Client`, `AccessToken`, `RequestLog` and `ClientConfig` are in `UnitTests/TestHelpers/Builders`. Each starts from a valid default, so a test names only the fields it cares about. Upstream systems are faked with `FakeHttpMessageHandler` and `UpstreamStub`, and the API and admin portal are hosted in-process with `ApiFactory` and `PortalFactory`.
+
 CI runs the same steps plus a vulnerable-package check (`.github/workflows/integration-service.yml`).

@@ -122,6 +122,16 @@ public class RequestHandlerTests
         Assert.Equal(new BatchStatsAcknowledgement("422", ["a@arbisoft.com"], "cid-3", "Revoked - no callback URL"), result.Acknowledgement, new AcknowledgementComparer());
     }
 
+    [Fact]
+    public async Task Batch_ForAnUnknownClient_ReturnsNoAcknowledgement()
+    {
+        var result = await _handler.HandleBatchAsync("nobody", new BatchStatsRequest { Emails = ["a@arbisoft.com"], TimeFrame = "24h" }, CancellationToken.None);
+
+        Assert.Equal(IntakeOutcome.UnknownClient, result.Outcome);
+        Assert.Null(result.Acknowledgement);
+        await _requestService.DidNotReceiveWithAnyArgs().SubmitAsync(default!, default);
+    }
+
     [Theory]
     [InlineData("nobody", false)]
     [InlineData("sophia", true)]

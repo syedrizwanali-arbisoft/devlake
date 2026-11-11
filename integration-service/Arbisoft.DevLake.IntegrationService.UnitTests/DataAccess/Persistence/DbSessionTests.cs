@@ -69,4 +69,30 @@ public class DbSessionTests : RepositoryTestBase
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() => Get<IDbSession>().CommitAsync(CancellationToken.None));
     }
+
+    [MySqlFact]
+    public async Task Rollback_DiscardsTheWrites_AndAllowsANewTransaction()
+    {
+        long discarded;
+        await using (var scope = _fixture.Services!.CreateAsyncScope())
+        {
+            var session = scope.ServiceProvider.GetRequiredService<IDbSession>();
+            var repository = scope.ServiceProvider.GetRequiredService<IScopeRepository>();
+            await session.BeginTransactionAsync(CancellationToken.None);
+            discarded = await repository.InsertAsync(NewScopeRow(), CancellationToken.None);
+
+            await session.RollbackAsync(CancellationToken.None);
+
+            Assert.Null(session.Transaction);
+            await session.BeginTransactionAsync(CancellationToken.None);
+        }
+
+        Assert.Null(await Get<IScopeRepository>().GetByIdAsync(discarded, CancellationToken.None));
+    }
+
+    [MySqlFact]
+    public async Task Rollback_WithoutATransaction_Throws()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Get<IDbSession>().RollbackAsync(CancellationToken.None));
+    }
 }

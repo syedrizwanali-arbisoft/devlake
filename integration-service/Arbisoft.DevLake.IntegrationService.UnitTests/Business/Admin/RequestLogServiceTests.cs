@@ -17,6 +17,7 @@ using Arbisoft.DevLake.IntegrationService.Business.Dtos.Admin;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Admin;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
+using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers.Builders;
 using NSubstitute;
 
 namespace Arbisoft.DevLake.IntegrationService.UnitTests.Business.Admin;
@@ -31,12 +32,12 @@ public class RequestLogServiceTests
 
     public RequestLogServiceTests()
     {
-        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new Client { Id = 1, ClientId = "sophia", Name = "Sophia" });
+        _clients.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(new ClientBuilder().Build());
         _service = new RequestLogService(_logs, _clients);
     }
 
     private static RequestLog Log(long id, string status = RequestStatus.Success) =>
-        new() { Id = id, ClientRefId = 1, CorrelationId = "corr-" + id, EventType = "engineer-stats", Status = status, Url = "/api/v1/engineers/x/stats", CreatedOn = Now };
+        new RequestLogBuilder().WithId(id).WithCorrelationId("corr-" + id).WithStatus(status).CreatedOn(Now).Build();
 
     [Fact]
     public async Task List_TurnsTheDayFiltersIntoAUtcRange_WithTheLastDayIncluded()

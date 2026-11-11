@@ -19,6 +19,7 @@ using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
+using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers.Builders;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -426,6 +427,125 @@ public sealed partial class AdminPortalTests : IAsyncLifetime, IDisposable
 
         Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(new Uri("/ClientConfigs/Details/999999999", UriKind.Relative))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(new Uri("/EmailMappings/Edit/999999999", UriKind.Relative))).StatusCode);
+    }
+
+    [MySqlFact]
+    public async Task AClient_CanBeEdited_AndItsScopesAssignedAndRemoved()
+    {
+        await SignInAsync();
+        var client = await CreateClientAsync();
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IClientRepository>();
+        var statsScope = (await scope.ServiceProvider.GetRequiredService<IScopeRepository>().GetByNameAsync("stats:read", CancellationToken.None))!;
+
+        var edited = await PostFormAsync(Http, $"/Clients/Edit/{client.Id}", ("Form.ClientId", client.ClientId), ("Form.Name", "Renamed"), ("Form.AccessTokenLifetimeSeconds", "1800"), ("Form.IsActive", "false"));
+        Assert.Equal(HttpStatusCode.Redirect, edited.StatusCode);
+        var after = (await clients.GetByIdAsync(client.Id, CancellationToken.None))!;
+        Assert.Equal(("Renamed", 1800, false, PortalFactory.AdminUsername), (after.Name, after.AccessTokenLifetimeSeconds, after.IsActive, after.ModifiedBy));
+
+        var bad = await PostFormAsync(Http, $"/Clients/Edit/{client.Id}", ("Form.ClientId", client.ClientId), ("Form.Name", "x"), ("Form.AccessTokenLifetimeSeconds", "5"), ("Form.IsActive", "true"));
+        Assert.Equal(HttpStatusCode.OK, bad.StatusCode);
+        Assert.Equal("Renamed", (await clients.GetByIdAsync(client.Id, CancellationToken.None))!.Name);
+
+        var assigned = await PostFormAsync(Http, $"/Clients/Details/{client.Id}?handler=Scopes", ("ScopeIds", statsScope.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.Equal(HttpStatusCode.Redirect, assigned.StatusCode);
+        Assert.Equal(["stats:read"], await clients.GetScopeNamesAsync(client.Id, CancellationToken.None));
+
+        var unknown = await PostFormAsync(Http, $"/Clients/Details/{client.Id}?handler=Scopes", ("ScopeIds", "999999999"));
+        Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
+        Assert.Equal(["stats:read"], await clients.GetScopeNamesAsync(client.Id, CancellationToken.None));
+
+        var cleared = await PostFormAsync(Http, $"/Clients/Details/{client.Id}?handler=Scopes");
+        Assert.Equal(HttpStatusCode.Redirect, cleared.StatusCode);
+        Assert.Empty(await clients.GetScopeNamesAsync(client.Id, CancellationToken.None));
+    }
+
+    [MySqlFact]
+    public async Task AClientSecret_CanBeRevoked_ButNotTwice()
+    {
+        await SignInAsync();
+        var client = await CreateClientAsync();
+        await PostFormAsync(Http, $"/Clients/{client.Id}/Secrets/Create", ("ValidForDays", "30"));
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IClientRepository>();
+        var secret = Assert.Single(await clients.GetSecretsAsync(client.Id, CancellationToken.None));
+        var path = $"/Clients/{client.Id}/Secrets/{secret.Id}/Revoke";
+
+        var revoked = await PostFormAsync(Http, path);
+        Assert.Equal(HttpStatusCode.Redirect, revoked.StatusCode);
+        Assert.NotNull(Assert.Single(await clients.GetSecretsAsync(client.Id, CancellationToken.None)).RevokedOn);
+
+        var again = await PostFormAsync(Http, path);
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Contains("already revoked", await again.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [MySqlFact]
+    public async Task AScope_CanBeEdited_ButNotRenamedOntoAnExistingName()
+    {
+        await SignInAsync();
+        var first = Unique("edit:").ToLowerInvariant();
+        var second = Unique("edit:").ToLowerInvariant();
+        await PostFormAsync(Http, "/Scopes/Create", ("Name", first), ("Description", "one"));
+        await PostFormAsync(Http, "/Scopes/Create", ("Name", second), ("Description", "two"));
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var scopes = scope.ServiceProvider.GetRequiredService<IScopeRepository>();
+        var stored = (await scopes.GetByNameAsync(first, CancellationToken.None))!;
+
+        var clash = await PostFormAsync(Http, $"/Scopes/Edit/{stored.Id}", ("Name", second), ("Description", "x"));
+        Assert.Equal(HttpStatusCode.OK, clash.StatusCode);
+        Assert.Contains("already exists", await clash.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        var renamed = await PostFormAsync(Http, $"/Scopes/Edit/{stored.Id}", ("Name", first), ("Description", "changed"));
+        Assert.Equal(HttpStatusCode.Redirect, renamed.StatusCode);
+        Assert.Equal("changed", (await scopes.GetByIdAsync(stored.Id, CancellationToken.None))!.Description);
+    }
+
+    [MySqlFact]
+    public async Task AnAccessToken_IsRevokedWithAReasonThatRecordsWhoDidIt_ButNotTwice()
+    {
+        await SignInAsync();
+        var client = await CreateClientAsync();
+        await PostFormAsync(Http, $"/Clients/{client.Id}/Secrets/Create", ("ValidForDays", "30"));
+        await PostFormAsync(Http, "/SigningKeys/Rotate");
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var clients = scope.ServiceProvider.GetRequiredService<IClientRepository>();
+        var secret = Assert.Single(await clients.GetSecretsAsync(client.Id, CancellationToken.None));
+        var key = (await scope.ServiceProvider.GetRequiredService<ISigningKeyRepository>().GetActiveAsync(DateTimeOffset.UtcNow, CancellationToken.None))!;
+        var tokens = scope.ServiceProvider.GetRequiredService<IAccessTokenRepository>();
+        var jti = Guid.NewGuid().ToString();
+        await tokens.InsertAsync(
+            new AccessTokenBuilder().WithJti(jti).ForClient(client.Id).IssuedWith(secret.Id, key.Id).Issued(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)).Build(), CancellationToken.None);
+
+        Assert.Contains(jti, await Http.GetStringAsync(new Uri("/AccessTokens", UriKind.Relative)), StringComparison.Ordinal);
+        var path = $"/AccessTokens/Revoke/{jti}";
+        Assert.Equal(HttpStatusCode.OK, (await Http.GetAsync(new Uri(path, UriKind.Relative))).StatusCode);
+
+        var noReason = await PostFormAsync(Http, path, ("Reason", " "));
+        Assert.Equal(HttpStatusCode.OK, noReason.StatusCode);
+        Assert.Null((await tokens.GetByJtiAsync(jti, CancellationToken.None))!.RevokedOn);
+
+        var revoked = await PostFormAsync(Http, path, ("Reason", "leaked in chat"));
+        Assert.Equal(HttpStatusCode.Redirect, revoked.StatusCode);
+        var stored = (await tokens.GetByJtiAsync(jti, CancellationToken.None))!;
+        Assert.NotNull(stored.RevokedOn);
+        Assert.Equal($"leaked in chat (revoked by {PortalFactory.AdminUsername})", stored.RevokedReason);
+
+        var again = await PostFormAsync(Http, path, ("Reason", "again"));
+        Assert.Contains("already revoked", await again.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(new Uri("/AccessTokens/Revoke/no-such-token", UriKind.Relative))).StatusCode);
+    }
+
+    [MySqlFact]
+    public async Task TheErrorPage_RendersWithoutLeakingDetail()
+    {
+        await SignInAsync();
+
+        var response = await Http.GetAsync(new Uri("/Error", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("no-store", response.Headers.CacheControl!.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Exception", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     [GeneratedRegex("name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"")]
