@@ -16,6 +16,7 @@
 using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
+using Arbisoft.DevLake.IntegrationService.DataAccess;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -40,6 +41,7 @@ public static class DependencyInjection
 
         services.AddMemoryCache();
         services.AddSingleton<ISecretEncryptor, SecretEncryptor>();
+        services.AddSingleton<ISecretDecryptor>(provider => provider.GetRequiredService<ISecretEncryptor>());
         services.AddSingleton<IClientSecretHasher, ClientSecretHasher>();
         services.AddScoped<ISecretStore, SecretStore>();
         services.AddScoped<ISigningKeyProvider, SigningKeyProvider>();

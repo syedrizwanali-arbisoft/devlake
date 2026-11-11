@@ -52,6 +52,8 @@ public class DependencyInjectionTests
         Assert.Equal("http://localhost:8080", provider.GetRequiredService<IOptions<DevLakeOptions>>().Value.BaseUrl);
         Assert.Equal(30, provider.GetRequiredService<IOptions<SophiaOptions>>().Value.TimeoutSeconds);
         Assert.Equal(10, provider.GetRequiredService<IOptions<WorkstreamOptions>>().Value.PageSize);
+        Assert.Equal(8, provider.GetRequiredService<IOptions<DevLakeOptions>>().Value.MaxConcurrentRequests);
+        Assert.Equal(3, provider.GetRequiredService<IOptions<ResilienceOptions>>().Value.MaxRetries);
     }
 
     [Theory]
@@ -63,6 +65,24 @@ public class DependencyInjectionTests
     {
         var settings = new Dictionary<string, string?>(ValidSettings);
         settings.Remove(missingKey);
+        using var provider = Build(settings);
+
+        Assert.Throws<OptionsValidationException>(() => ValidateAll(provider));
+    }
+
+    [Theory]
+    [InlineData("Resilience:MaxRetries", "11")]
+    [InlineData("Resilience:RetryBaseDelayMilliseconds", "0")]
+    [InlineData("Resilience:BreakerFailureRatio", "0")]
+    [InlineData("Resilience:BreakerFailureRatio", "1.5")]
+    [InlineData("Resilience:BreakerMinimumThroughput", "1")]
+    [InlineData("Resilience:BreakerSamplingSeconds", "0")]
+    [InlineData("Resilience:BreakerBreakSeconds", "0")]
+    [InlineData("DevLake:MaxConcurrentRequests", "0")]
+    [InlineData("DevLake:TimeoutSeconds", "0")]
+    public void AddDataAccess_OutOfRangeUpstreamSetting_FailsValidation(string key, string value)
+    {
+        var settings = new Dictionary<string, string?>(ValidSettings) { [key] = value };
         using var provider = Build(settings);
 
         Assert.Throws<OptionsValidationException>(() => ValidateAll(provider));
@@ -87,5 +107,6 @@ public class DependencyInjectionTests
         _ = provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
         _ = provider.GetRequiredService<IOptions<DevLakeOptions>>().Value;
         _ = provider.GetRequiredService<IOptions<WorkstreamOptions>>().Value;
+        _ = provider.GetRequiredService<IOptions<ResilienceOptions>>().Value;
     }
 }

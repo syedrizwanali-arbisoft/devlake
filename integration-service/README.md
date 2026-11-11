@@ -82,6 +82,40 @@ Failed, expired and unreadable messages go to `<queue>.dead` through the `<queue
 - **Duplicates:** an identical request (same client, emails and time frame) inside the duplicate window returns the original acknowledgement. A unique key in the database is what prevents the duplicate, so concurrent identical requests also produce one. Revoked and failed requests never block a repeat.
 - **Queue problems:** 429 with `Retry-After` when the queue is full, 503 with `Retry-After` when the broker is unreachable. Nothing is recorded in either case.
 
+## Calls to DevLake, Sophia and Workstream
+
+Three typed HTTP clients make the outbound calls. Each has its own timeout and circuit breaker, and none of them logs a URL, a token or a payload, only the correlation ID, the system and the status.
+
+| Client | Calls | Authentication |
+|---|---|---|
+| DevLake | `GET /is_valid`, `GET /stats/{email}/jira`, `/github`, `/ai_usage`, `/ai_cost` with `?tf=24h` or `?from=...&to=...` | `Authorization: Bearer <DevLake:ApiToken>` |
+| Workstream | `GET /is_valid`, `GET /projects?page=N&pageSize=M` | `Authorization: Bearer <Workstream:ApiToken>` |
+| Sophia | `POST /oauth2/token/`, then the callback (`POST /api/v1/devlake/callback/`) | OAuth2 client credentials, or a stored API token |
+
+Sophia's base URL, token URL, client ID, encrypted secret, scope and callback path and method come from the client's `ClientConfigs` and `ClientConfigOutboundUrls` rows, because each environment (Stage, Prod) has its own. The access token is reused until a minute before it expires, a rejected token is replaced once, and URLs must use HTTPS (plain HTTP only for loopback, for local stubs).
+
+Every failure becomes one of four exceptions, so callers handle outcomes, not HTTP details:
+
+| Exception | Meaning | What a caller should do |
+|---|---|---|
+| `ExternalAuthenticationException` | Credentials refused, or no usable token | Stop and leave work queued until the credentials are fixed |
+| `ExternalApiUnavailableException` | Timeout, connection error, 5xx or 429 after the retries, or an open circuit | Try again later |
+| `ExternalApiRejectedException` | The system refused this request (other 4xx) | Fail this request only |
+| `ExternalApiResponseException` | A success answer that is not what the contract says | Fail this request only |
+
+Only read calls retry (timeouts, 5xx and 429, never a 4xx). The Sophia callback is not retried by the HTTP layer: it returns the answer, successful or not, so the processing job can retry up to `maxAttempts` and record every attempt.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `DevLake:TimeoutSeconds`, `Sophia:TimeoutSeconds`, `Workstream:TimeoutSeconds` | 30 | How long one attempt waits |
+| `DevLake:MaxConcurrentRequests` | 8 | Most requests in flight to DevLake at once, across the process |
+| `Resilience:MaxRetries` | 3 | Retries of a failed read call |
+| `Resilience:RetryBaseDelayMilliseconds` | 1000 | First retry delay; it doubles each time, with jitter |
+| `Resilience:BreakerFailureRatio` | 0.5 | Share of failed calls that opens the circuit |
+| `Resilience:BreakerMinimumThroughput` | 10 | Calls needed in the sampling window before it can open |
+| `Resilience:BreakerSamplingSeconds` | 30 | The sampling window |
+| `Resilience:BreakerBreakSeconds` | 30 | How long the circuit stays open before one probe call |
+
 ## Request status
 
 `GET /api/v1/requests/poll/{uuid}` (scope `stats:read`) takes the `correlation_id` from a stats response and answers at once with `{ "correlation_id", "status", "check_time" }`. `check_time` is the time of the call in UTC, for example `2026-11-05T14:02:55Z`. The status is one of these, spelled exactly like this:

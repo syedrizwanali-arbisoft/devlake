@@ -16,11 +16,9 @@
 namespace Arbisoft.DevLake.IntegrationService.Business.Security;
 
 /// <summary>Encrypts values stored in the database: outbound client secrets, API tokens and private signing keys.</summary>
-public interface ISecretEncryptor
+public interface ISecretEncryptor : DataAccess.ISecretDecryptor
 {
     /// <summary>Encrypts <paramref name="plaintext"/>. The result is safe to store and differs on every call.</summary>
     string Encrypt(string plaintext);
 
-    /// <summary>Decrypts a value from <see cref="Encrypt"/>. Throws when the value was altered or the key is wrong.</summary>
-    string Decrypt(string protectedValue);
 }

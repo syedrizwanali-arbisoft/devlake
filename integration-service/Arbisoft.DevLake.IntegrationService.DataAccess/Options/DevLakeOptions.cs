@@ -28,6 +28,11 @@ public sealed class DevLakeOptions
     [Required]
     public string ApiToken { get; init; } = string.Empty;
 
+    /// <summary>How long one attempt waits for DevLake before it counts as timed out.</summary>
     [Range(1, 300)]
     public int TimeoutSeconds { get; init; } = 30;
+
+    /// <summary>The most requests in flight to DevLake at once, across the whole process. It protects DevLake's database from a large batch (ASY-7).</summary>
+    [Range(1, 100)]
+    public int MaxConcurrentRequests { get; init; } = 8;
 }
