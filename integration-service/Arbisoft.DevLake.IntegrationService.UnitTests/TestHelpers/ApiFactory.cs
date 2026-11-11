@@ -67,6 +67,8 @@ public sealed class ApiFactory : WebApplicationFactory<AuthController>
         UseRabbitMqSettings(builder);
         builder.UseSetting("DevLake:ApiToken", "token");
         builder.UseSetting("Workstream:ApiToken", "token");
+        builder.UseSetting("DevLake:BaseUrl", $"http://localhost:{UpstreamStub.DevLakePort}");
+        builder.UseSetting("Workstream:BaseUrl", $"http://localhost:{UpstreamStub.WorkstreamPort}");
 
         // The job would take requests off the queue that tests are about to inspect, so it is off unless a test turns it on.
         builder.UseSetting("Processing:Enabled", "false");

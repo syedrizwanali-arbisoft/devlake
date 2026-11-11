@@ -26,6 +26,10 @@ public sealed class UpstreamStub
 {
     public const string SophiaHost = "sophia.test";
 
+    /// <summary>The ports the API under test is configured to reach DevLake and Workstream on, so a request can be told apart by where it went.</summary>
+    public const int DevLakePort = 8080;
+    public const int WorkstreamPort = 5097;
+
     private readonly object _gate = new();
     private readonly FakeHttpMessageHandler _handler;
     private readonly Queue<HttpStatusCode> _callbackScript = new();
@@ -43,8 +47,18 @@ public sealed class UpstreamStub
     /// <summary>The status DevLake answers with for each email's stats.</summary>
     public Func<string, HttpStatusCode> DevLakeStats { get; set; } = _ => HttpStatusCode.OK;
 
+    /// <summary>Whether Workstream accepts our token.</summary>
+    public bool WorkstreamTokenValid { get; set; } = true;
+
+    /// <summary>What Workstream answers for each page of projects: a status and a JSON body.</summary>
+    public Func<int, (HttpStatusCode Status, string Body)> WorkstreamPages { get; set; } = _ => (HttpStatusCode.OK, "[]");
+
     /// <summary>The status Sophia's token endpoint answers with.</summary>
     public HttpStatusCode SophiaTokenStatus { get; set; } = HttpStatusCode.OK;
+
+    public IEnumerable<RecordedRequest> WorkstreamProjectRequests => _handler.Requests.Where(r => r.Uri.Port == WorkstreamPort && r.Uri.AbsolutePath == "/projects");
+
+    public IEnumerable<RecordedRequest> WorkstreamTokenChecks => _handler.Requests.Where(r => r.Uri.Port == WorkstreamPort && r.Uri.AbsolutePath == "/is_valid");
 
     public IEnumerable<RecordedRequest> DevLakeStatsRequests => _handler.Requests.Where(r => r.Uri.AbsolutePath.StartsWith("/stats/", StringComparison.Ordinal));
 
@@ -75,6 +89,11 @@ public sealed class UpstreamStub
             return uri.AbsolutePath == "/oauth2/token/" ? SophiaToken() : SophiaCallback();
         }
 
+        if (uri.Port == WorkstreamPort)
+        {
+            return Workstream(uri);
+        }
+
         if (uri.AbsolutePath == "/is_valid")
         {
             return Json(DevLakeTokenValid ? HttpStatusCode.OK : HttpStatusCode.Unauthorized, DevLakeTokenValid ? "true" : "{}");
@@ -84,6 +103,18 @@ public sealed class UpstreamStub
         var email = Uri.UnescapeDataString(segments[1]);
         var status = DevLakeStats(email);
         return Json(status, status == HttpStatusCode.OK ? $"{{\"source\":\"{segments[2]}\",\"for\":\"{email}\"}}" : "{\"error\":\"nope\"}");
+    }
+
+    private HttpResponseMessage Workstream(Uri uri)
+    {
+        if (uri.AbsolutePath == "/is_valid")
+        {
+            return Json(WorkstreamTokenValid ? HttpStatusCode.OK : HttpStatusCode.Unauthorized, WorkstreamTokenValid ? "true" : "{}");
+        }
+
+        var page = int.Parse(System.Web.HttpUtility.ParseQueryString(uri.Query)["page"]!, System.Globalization.CultureInfo.InvariantCulture);
+        var (status, body) = WorkstreamPages(page);
+        return Json(status, body);
     }
 
     private HttpResponseMessage SophiaToken()

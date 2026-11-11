@@ -170,6 +170,28 @@ Only read calls retry (timeouts, 5xx and 429, never a 4xx). The Sophia callback 
 | `Resilience:BreakerSamplingSeconds` | 30 | The sampling window |
 | `Resilience:BreakerBreakSeconds` | 30 | How long the circuit stays open before one probe call |
 
+## Projects from Workstream
+
+`GET /fetch/projects` (scope `projects:fetch`, not versioned) returns every Workstream project with its team lead, so DevLake never calls Workstream itself. It first checks Workstream's token, then reads `/projects?page=N&pageSize=M` page after page (`Workstream:PageSize`, default 10) until a short page, a page with nothing new on it, or a safety limit of 10,000 pages.
+
+```json
+[ { "id": "p-1", "name": "Apollo", "team_lead": { "name": "Jane Doe", "email": "jane.doe@arbisoft.com" } } ]
+```
+
+- Only `id`, `name` and `team_lead` (`name` and `email`, either may be null) leave the service, whatever else Workstream sends. `team_lead` is null when Workstream has none.
+- The list is complete or it is an error. A failure on any page returns an error and no projects, because a partial list would make DevLake think projects had been removed. A project listed on two pages is returned once.
+- **Workstream's response shape is not documented**, so the mapper accepts the usual names: a bare array or an object holding the list under `results`, `data`, `items` or `projects`; `id`, `project_id`, `projectId` or `uuid`; `name`, `title`, `project_name` or `projectName`; and a team lead as an object under `team_lead`, `teamLead`, `lead`, `manager` or `project_manager` (or as flat `team_lead_name` and `team_lead_email` fields). A project with no id or no name fails the whole call. Once Workstream's real shape is known, `ProjectMapper` is the one place to change.
+
+Errors (all `ProblemDetails` with a `code` and the correlation ID, and never any Workstream data):
+
+| Status | `code` | When |
+|---|---|---|
+| 502 | `workstream_token_invalid` | Workstream rejected this service's API token |
+| 502 | `upstream_credentials` | Workstream rejected the token part way through |
+| 502 | `upstream_rejected` | Workstream refused a page request |
+| 502 | `upstream_bad_response` | The answer was not a list of readable projects |
+| 503 (with `Retry-After`) | `upstream_unavailable` | Workstream could not be reached, or kept failing after the retries |
+
 ## Request status
 
 `GET /api/v1/requests/poll/{uuid}` (scope `stats:read`) takes the `correlation_id` from a stats response and answers at once with `{ "correlation_id", "status", "check_time" }`. `check_time` is the time of the call in UTC, for example `2026-11-05T14:02:55Z`. The status is one of these, spelled exactly like this:

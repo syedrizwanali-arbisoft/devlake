@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using System.Globalization;
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     public const string ErrorCode = "internal_error";
     public const string QueueFullCode = "queue_full";
     public const string QueueUnavailableCode = "queue_unavailable";
+    public const string UpstreamUnavailableCode = "upstream_unavailable";
+    public const string UpstreamCredentialsCode = "upstream_credentials";
+    public const string UpstreamRejectedCode = "upstream_rejected";
+    public const string UpstreamBadResponseCode = "upstream_bad_response";
 
     private const int QueueRetryAfterSeconds = 60;
     private const string UnknownRoute = "(unknown route)";
@@ -48,7 +53,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         Log(exception, httpContext, status);
 
         httpContext.Response.StatusCode = status;
-        if (status != StatusCodes.Status500InternalServerError)
+        if (status is StatusCodes.Status429TooManyRequests or StatusCodes.Status503ServiceUnavailable)
         {
             httpContext.Response.Headers.RetryAfter = QueueRetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
         }
@@ -63,6 +68,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         {
             QueueFullException => (StatusCodes.Status429TooManyRequests, "The request queue is full. Try again shortly.", QueueFullCode),
             QueueUnavailableException => (StatusCodes.Status503ServiceUnavailable, "The request queue is temporarily unavailable. Try again shortly.", QueueUnavailableCode),
+            ExternalApiUnavailableException => (StatusCodes.Status503ServiceUnavailable, "A system this service depends on is temporarily unavailable. Try again shortly.", UpstreamUnavailableCode),
+            ExternalAuthenticationException => (StatusCodes.Status502BadGateway, "A system this service depends on rejected its credentials.", UpstreamCredentialsCode),
+            ExternalApiRejectedException => (StatusCodes.Status502BadGateway, "A system this service depends on refused the request.", UpstreamRejectedCode),
+            ExternalApiResponseException => (StatusCodes.Status502BadGateway, "A system this service depends on sent an answer that could not be used.", UpstreamBadResponseCode),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.", ErrorCode)
         };
     }
@@ -76,7 +85,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         }
         else
         {
-            _logger.LogWarning(exception, "Request {Method} {Route} could not be queued: {Status}", httpContext.Request.Method, route, status);
+            _logger.LogWarning(exception, "Request {Method} {Route} was answered {Status} because of a problem outside this service", httpContext.Request.Method, route, status);
         }
     }
 

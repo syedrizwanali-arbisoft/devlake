@@ -16,6 +16,7 @@
 using Arbisoft.DevLake.IntegrationService.Business.Security;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Auth;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Processing;
+using Arbisoft.DevLake.IntegrationService.Business.Services.Projects;
 using Arbisoft.DevLake.IntegrationService.Business.Services.Requests;
 using Arbisoft.DevLake.IntegrationService.DataAccess;
 using Microsoft.Extensions.Configuration;
@@ -58,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<ICallbackAvailability, CallbackAvailability>();
         services.AddScoped<IRequestHandler, RequestHandler>();
         services.AddScoped<IRequestStatusService, RequestStatusService>();
+        services.AddScoped<IErpIntegrationService, ErpIntegrationService>();
 
         services.AddScoped<IRequestAttemptLog, RequestAttemptLog>();
         services.AddScoped<IEngineerStatsCollector, EngineerStatsCollector>();

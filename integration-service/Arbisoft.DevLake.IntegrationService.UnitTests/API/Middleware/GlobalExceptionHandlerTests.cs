@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.API.Middleware;
+using Arbisoft.DevLake.IntegrationService.DataAccess.ExternalApis;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Messaging;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -61,6 +62,36 @@ public class GlobalExceptionHandlerTests
         Assert.Equal(503, context.Response.StatusCode);
         Assert.Equal("60", context.Response.Headers.RetryAfter.ToString());
         Assert.Equal("queue_unavailable", _written!.ProblemDetails.Extensions["code"]);
+    }
+
+    [Fact]
+    public async Task AnUnavailableUpstreamSystem_Is503WithRetryAfter()
+    {
+        var context = await HandleAsync(new ExternalApiUnavailableException("Workstream", "Workstream at 10.1.2.3 refused the connection"));
+
+        Assert.Equal(503, context.Response.StatusCode);
+        Assert.Equal("60", context.Response.Headers.RetryAfter.ToString());
+        Assert.Equal("upstream_unavailable", _written!.ProblemDetails.Extensions["code"]);
+    }
+
+    [Theory]
+    [InlineData(typeof(ExternalAuthenticationException), "upstream_credentials")]
+    [InlineData(typeof(ExternalApiRejectedException), "upstream_rejected")]
+    [InlineData(typeof(ExternalApiResponseException), "upstream_bad_response")]
+    public async Task AnUpstreamSystemThatRefusedOrAnsweredBadly_Is502_WithAStableCode_AndNoRetryAfter(Type type, string code)
+    {
+        var exception = type == typeof(ExternalApiRejectedException)
+            ? (Exception)new ExternalApiRejectedException("Workstream", "SECRET-DETAIL", 400)
+            : type == typeof(ExternalAuthenticationException)
+                ? new ExternalAuthenticationException("Workstream", "SECRET-DETAIL", 401)
+                : new ExternalApiResponseException("Workstream", "SECRET-DETAIL");
+
+        var context = await HandleAsync(exception);
+
+        Assert.Equal(502, context.Response.StatusCode);
+        Assert.False(context.Response.Headers.ContainsKey("Retry-After"));
+        Assert.Equal(code, _written!.ProblemDetails.Extensions["code"]);
+        Assert.DoesNotContain("SECRET-DETAIL", _written.ProblemDetails.Title, StringComparison.Ordinal);
     }
 
     [Fact]
