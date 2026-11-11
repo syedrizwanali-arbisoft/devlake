@@ -1,0 +1,38 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@using Arbisoft.DevLake.IntegrationService.Business.Services.Admin
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.ClientConfigs.Urls.UrlForm
+<label>Event type
+  <select name="Form.EventType">
+    @foreach (var type in ClientConfigService.KnownEventTypes)
+    {
+        <option value="@type" selected="@(type == Model.EventType)">@type</option>
+    }
+  </select>
+</label>
+<label>Method
+  <select name="Form.Method">
+    @foreach (var method in ClientConfigService.KnownMethods)
+    {
+        <option value="@method" selected="@(method == Model.Method)">@method</option>
+    }
+  </select>
+</label>
+<label>Path <input type="text" name="Form.Path" value="@Model.Path" maxlength="500" required placeholder="/api/v1/devlake/callback/"></label>
+<p class="muted">Starts with a single "/" and is added to the base URL. It cannot point at another host.</p>
+<label class="check"><input type="checkbox" name="Form.IsActive" value="true" @(Model.IsActive ? "checked" : "")> Active</label>
+<input type="hidden" name="Form.IsActive" value="false">

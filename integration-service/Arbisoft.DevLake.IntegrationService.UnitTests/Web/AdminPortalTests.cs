@@ -16,6 +16,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Arbisoft.DevLake.IntegrationService.DataAccess.Models;
 using Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -87,7 +88,7 @@ public sealed partial class AdminPortalTests : IAsyncLifetime, IDisposable
     [MySqlFact]
     public async Task EveryPage_SendsAnAnonymousVisitorToTheSignInPage()
     {
-        foreach (var path in new[] { "/", "/Clients", "/Scopes", "/SigningKeys", "/AccessTokens", "/Clients/Create" })
+        foreach (var path in new[] { "/", "/Clients", "/Scopes", "/SigningKeys", "/AccessTokens", "/Clients/Create", "/EmailMappings", "/ClientConfigs", "/RequestLogs" })
         {
             var response = await Http.GetAsync(new Uri(path, UriKind.Relative));
 
@@ -255,6 +256,176 @@ public sealed partial class AdminPortalTests : IAsyncLifetime, IDisposable
         }
 
         Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(new Uri("/Clients/Details/999999999", UriKind.Relative))).StatusCode);
+    }
+
+    private async Task<Client> CreateClientAsync()
+    {
+        var clientId = Unique("cfg.");
+        await PostFormAsync(Http, "/Clients/Create", ("Form.ClientId", clientId), ("Form.Name", "Config test"), ("Form.AccessTokenLifetimeSeconds", "900"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        return (await scope.ServiceProvider.GetRequiredService<IClientRepository>().GetByClientIdAsync(clientId, CancellationToken.None))!;
+    }
+
+    [MySqlFact]
+    public async Task AnEmailMapping_IsStoredNormalized_KeepsWhatWasTyped_AndRefusesADuplicate()
+    {
+        await SignInAsync();
+        var owner = $"{Unique("map")}@arbisoft.com".ToLowerInvariant();
+
+        var created = await PostFormAsync(Http, "/EmailMappings/Create", ("Form.ArbisoftEmail", owner.ToUpperInvariant()), ("Form.Email", " Jane.Doe@Gmail.COM "));
+        Assert.Equal(HttpStatusCode.Redirect, created.StatusCode);
+
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IEmailMappingRepository>();
+        var stored = Assert.Single((await repository.ListAsync(owner, 1, 10, CancellationToken.None)).Items);
+        Assert.Equal(owner, stored.ArbisoftEmail);
+        Assert.Equal("jane.doe@gmail.com", stored.Email);
+        Assert.Equal(" Jane.Doe@Gmail.COM ", stored.EmailAsReceived);
+        Assert.Equal(["jane.doe@gmail.com"], await repository.GetMappedEmailsAsync(owner, CancellationToken.None));
+
+        var duplicate = await PostFormAsync(Http, "/EmailMappings/Create", ("Form.ArbisoftEmail", owner), ("Form.Email", "JANE.DOE@gmail.com"));
+        Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
+        Assert.Contains("already exists", await duplicate.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        var wrongDomain = await PostFormAsync(Http, "/EmailMappings/Create", ("Form.ArbisoftEmail", "someone@gmail.com"), ("Form.Email", "x@gmail.com"));
+        Assert.Contains("Arbisoft", await wrongDomain.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        var edited = await PostFormAsync(Http, $"/EmailMappings/Edit/{stored.Id}", ("Form.ArbisoftEmail", owner), ("Form.Email", "other@gmail.com"));
+        Assert.Equal(HttpStatusCode.Redirect, edited.StatusCode);
+        Assert.Equal(["other@gmail.com"], await repository.GetMappedEmailsAsync(owner, CancellationToken.None));
+
+        Assert.Contains(owner, await Http.GetStringAsync(new Uri($"/EmailMappings?Search={Uri.EscapeDataString(owner[..10].ToUpperInvariant())}", UriKind.Relative)), StringComparison.Ordinal);
+    }
+
+    [MySqlFact]
+    public async Task AnOutboundConfig_StoresItsSecretEncrypted_NeverShowsItBack_AndKeepsItWhenLeftBlank()
+    {
+        await SignInAsync();
+        var client = await CreateClientAsync();
+        var path = $"/ClientConfigs/Edit/{client.Id}";
+        const string secret = "super-secret-value-123";
+
+        var saved = await PostFormAsync(Http, path, ("Form.AuthType", "OAuth2ClientCredentials"), ("Form.BaseUrl", "https://sophia.example.com"), ("Form.TokenUrl", "https://sophia.example.com/oauth2/token/"),
+            ("Form.OutboundClientId", "devlake"), ("Form.OutboundClientSecret", secret), ("Form.OutboundScope", "callback"), ("Form.MaxAttempts", "4"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        Assert.Equal(HttpStatusCode.Redirect, saved.StatusCode);
+
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var configs = scope.ServiceProvider.GetRequiredService<IClientConfigRepository>();
+        var config = (await configs.GetByClientRefIdAsync(client.Id, CancellationToken.None))!;
+        Assert.Equal(PortalFactory.AdminUsername, config.CreatedBy);
+        Assert.Equal(4, config.MaxAttempts);
+        Assert.NotNull(config.TokenRotatedOn);
+        Assert.NotEqual(secret, config.OutboundClientSecretEncrypted);
+        Assert.Equal(secret, scope.ServiceProvider.GetRequiredService<ISecretEncryptor>().Decrypt(config.OutboundClientSecretEncrypted!));
+
+        foreach (var shown in new[] { path, $"/ClientConfigs/Details/{client.Id}", "/ClientConfigs" })
+        {
+            Assert.DoesNotContain(secret, await Http.GetStringAsync(new Uri(shown, UriKind.Relative)), StringComparison.Ordinal);
+        }
+
+        var kept = await PostFormAsync(Http, path, ("Form.AuthType", "OAuth2ClientCredentials"), ("Form.BaseUrl", "https://sophia.example.com"), ("Form.TokenUrl", "https://sophia.example.com/oauth2/token/"),
+            ("Form.OutboundClientId", "devlake"), ("Form.OutboundClientSecret", string.Empty), ("Form.MaxAttempts", "5"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        Assert.Equal(HttpStatusCode.Redirect, kept.StatusCode);
+        var after = (await configs.GetByClientRefIdAsync(client.Id, CancellationToken.None))!;
+        Assert.Equal(config.OutboundClientSecretEncrypted, after.OutboundClientSecretEncrypted);
+        Assert.Equal(5, after.MaxAttempts);
+        Assert.Equal(PortalFactory.AdminUsername, after.ModifiedBy);
+
+        var insecure = await PostFormAsync(Http, path, ("Form.AuthType", "OAuth2ClientCredentials"), ("Form.BaseUrl", "http://sophia.example.com"), ("Form.TokenUrl", "https://x.example.com/t"),
+            ("Form.OutboundClientId", "devlake"), ("Form.MaxAttempts", "3"), ("Form.IsActive", "true"));
+        Assert.Equal(HttpStatusCode.OK, insecure.StatusCode);
+        Assert.Contains("HTTPS", await insecure.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [MySqlFact]
+    public async Task CallbackUrls_AllowOnlyOneActiveUrlPerEventType()
+    {
+        await SignInAsync();
+        var client = await CreateClientAsync();
+        await PostFormAsync(Http, $"/ClientConfigs/Edit/{client.Id}", ("Form.AuthType", "ApiToken"), ("Form.BaseUrl", "https://sophia.example.com"), ("Form.ApiToken", "tok"), ("Form.MaxAttempts", "3"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        var createPath = $"/ClientConfigs/{client.Id}/Urls/Create";
+
+        var first = await PostFormAsync(Http, createPath, ("Form.EventType", "engineer-stats"), ("Form.Method", "POST"), ("Form.Path", "/callback/"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        Assert.Equal(HttpStatusCode.Redirect, first.StatusCode);
+
+        var second = await PostFormAsync(Http, createPath, ("Form.EventType", "engineer-stats"), ("Form.Method", "POST"), ("Form.Path", "/other/"), ("Form.IsActive", "true"));
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Contains("already active", await second.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        var offHost = await PostFormAsync(Http, createPath, ("Form.EventType", "engineer-stats-batch"), ("Form.Method", "POST"), ("Form.Path", "//evil.example.com/x"), ("Form.IsActive", "true"));
+        Assert.Equal(HttpStatusCode.OK, offHost.StatusCode);
+
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var configs = scope.ServiceProvider.GetRequiredService<IClientConfigRepository>();
+        var config = (await configs.GetByClientRefIdAsync(client.Id, CancellationToken.None))!;
+        var url = Assert.Single(await configs.GetOutboundUrlsAsync(config.Id, CancellationToken.None));
+        Assert.Equal("/callback/", url.Path);
+        Assert.Equal(PortalFactory.AdminUsername, url.CreatedBy);
+
+        var edited = await PostFormAsync(Http, $"/ClientConfigs/{client.Id}/Urls/{url.Id}/Edit", ("Form.EventType", "engineer-stats"), ("Form.Method", "PUT"), ("Form.Path", "/callback/"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        Assert.Equal(HttpStatusCode.Redirect, edited.StatusCode);
+        Assert.Equal("PUT", (await configs.GetOutboundUrlByIdAsync(url.Id, CancellationToken.None))!.Method);
+    }
+
+    [MySqlFact]
+    public async Task RequestLogs_CanBeFiltered_AndOneShowsItsBodyAndDeliveryAttempts()
+    {
+        await SignInAsync();
+        var client = await CreateClientAsync();
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var logs = scope.ServiceProvider.GetRequiredService<IRequestLogRepository>();
+        var correlation = Guid.NewGuid().ToString();
+        var id = await logs.InsertAsync(
+            new RequestLog { ClientRefId = client.Id, CorrelationId = correlation, Url = "/api/v1/engineers/x/stats?tf=24h", Status = RequestStatus.Failed, EventType = "engineer-stats", CreatedOn = DateTimeOffset.UtcNow },
+            CancellationToken.None);
+        await logs.InsertJsonAsync(new RequestLogJson { RequestLogId = id, Json = "{\"email\":\"jane@arbisoft.com\",\"time_frame\":\"24h\"}" }, CancellationToken.None);
+        await logs.InsertAttemptAsync(
+            new RequestResponseAttempt { RequestLogId = id, ResponseJson = "{\"detail\":\"bad gateway\"}", AttemptStatus = "Failed", FailureError = "HTTP 502", AttemptBy = "job", AttemptOn = DateTimeOffset.UtcNow },
+            CancellationToken.None);
+
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var listed = await Http.GetStringAsync(new Uri($"/RequestLogs?ClientRefId={client.Id}&Status=Failed&From={today}&To={today}", UriKind.Relative));
+        Assert.Contains(correlation, listed, StringComparison.Ordinal);
+        var otherStatus = await Http.GetStringAsync(new Uri($"/RequestLogs?ClientRefId={client.Id}&Status=Success", UriKind.Relative));
+        Assert.DoesNotContain(correlation, otherStatus, StringComparison.Ordinal);
+        var otherDay = await Http.GetStringAsync(new Uri($"/RequestLogs?ClientRefId={client.Id}&From=2000-01-01&To=2000-01-02", UriKind.Relative));
+        Assert.DoesNotContain(correlation, otherDay, StringComparison.Ordinal);
+
+        var details = await Http.GetStringAsync(new Uri($"/RequestLogs/Details/{id}", UriKind.Relative));
+        Assert.Contains("jane@arbisoft.com", details, StringComparison.Ordinal);
+        Assert.Contains("HTTP 502", details, StringComparison.Ordinal);
+        Assert.Contains("bad gateway", details, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(new Uri("/RequestLogs/Details/999999999", UriKind.Relative))).StatusCode);
+    }
+
+    [MySqlFact]
+    public async Task TheIntegrationPages_AllRenderForASignedInAdmin()
+    {
+        await SignInAsync();
+        var client = await CreateClientAsync();
+        await PostFormAsync(Http, $"/ClientConfigs/Edit/{client.Id}", ("Form.AuthType", "ApiToken"), ("Form.BaseUrl", "https://sophia.example.com"), ("Form.ApiToken", "tok"), ("Form.MaxAttempts", "3"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        await PostFormAsync(Http, $"/ClientConfigs/{client.Id}/Urls/Create", ("Form.EventType", "engineer-stats"), ("Form.Method", "POST"), ("Form.Path", "/cb/"), ("Form.IsActive", "true"), ("Form.IsActive", "false"));
+        var owner = $"{Unique("pg")}@arbisoft.com".ToLowerInvariant();
+        await PostFormAsync(Http, "/EmailMappings/Create", ("Form.ArbisoftEmail", owner), ("Form.Email", "x@gmail.com"));
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var mapping = Assert.Single((await scope.ServiceProvider.GetRequiredService<IEmailMappingRepository>().ListAsync(owner, 1, 10, CancellationToken.None)).Items);
+        var configs = scope.ServiceProvider.GetRequiredService<IClientConfigRepository>();
+        var url = Assert.Single(await configs.GetOutboundUrlsAsync((await configs.GetByClientRefIdAsync(client.Id, CancellationToken.None))!.Id, CancellationToken.None));
+
+        var paths = new[]
+        {
+            "/EmailMappings", "/EmailMappings/Create", $"/EmailMappings/Edit/{mapping.Id}", "/ClientConfigs", $"/ClientConfigs/Details/{client.Id}", $"/ClientConfigs/Edit/{client.Id}",
+            $"/ClientConfigs/{client.Id}/Urls/Create", $"/ClientConfigs/{client.Id}/Urls/{url.Id}/Edit", "/RequestLogs"
+        };
+        foreach (var path in paths)
+        {
+            var response = await Http.GetAsync(new Uri(path, UriKind.Relative));
+
+            Assert.True(response.StatusCode == HttpStatusCode.OK, $"{path} answered {(int)response.StatusCode}.");
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(new Uri("/ClientConfigs/Details/999999999", UriKind.Relative))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(new Uri("/EmailMappings/Edit/999999999", UriKind.Relative))).StatusCode);
     }
 
     [GeneratedRegex("name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"")]

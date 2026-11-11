@@ -27,6 +27,24 @@ public static partial class EmailNormalizer
     /// <summary>Trims and lower-cases <paramref name="raw"/> and checks it is a well-formed address in one of <paramref name="allowedDomains"/>.</summary>
     public static bool TryNormalize(string? raw, IEnumerable<string> allowedDomains, out string normalized, out string? error)
     {
+        if (!TryNormalizeAnyDomain(raw, out normalized, out error))
+        {
+            return false;
+        }
+
+        var domain = normalized[(normalized.IndexOf('@', StringComparison.Ordinal) + 1)..];
+        if (!allowedDomains.Contains(domain, StringComparer.OrdinalIgnoreCase))
+        {
+            error = "Only Arbisoft email addresses are accepted.";
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Trims and lower-cases <paramref name="raw"/> and checks it is a well-formed address, whatever its domain. For the other emails an engineer commits with.</summary>
+    public static bool TryNormalizeAnyDomain(string? raw, out string normalized, out string? error)
+    {
         normalized = Canonical(raw ?? string.Empty);
 
         if (normalized.Length == 0)
@@ -38,13 +56,6 @@ public static partial class EmailNormalizer
         if (normalized.Length > RequestLimits.MaxEmailLength || !Shape().IsMatch(normalized))
         {
             error = "The email is not a valid email address.";
-            return false;
-        }
-
-        var domain = normalized[(normalized.IndexOf('@', StringComparison.Ordinal) + 1)..];
-        if (!allowedDomains.Contains(domain, StringComparer.OrdinalIgnoreCase))
-        {
-            error = "Only Arbisoft email addresses are accepted.";
             return false;
         }
 

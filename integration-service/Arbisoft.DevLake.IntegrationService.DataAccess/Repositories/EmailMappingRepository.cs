@@ -22,7 +22,7 @@ namespace Arbisoft.DevLake.IntegrationService.DataAccess.Repositories;
 
 public sealed class EmailMappingRepository : RepositoryBase, IEmailMappingRepository
 {
-    private const string Columns = "id, arbisoftEmail, email, createdOn";
+    private const string Columns = "id, arbisoftEmail, email, emailAsReceived, createdOn";
 
     public EmailMappingRepository(IDbSession session, IOptions<DatabaseOptions> options)
         : base(session, options)
@@ -34,9 +34,27 @@ public sealed class EmailMappingRepository : RepositoryBase, IEmailMappingReposi
         return QueryAsync<string>("SELECT email FROM EmailMappings WHERE arbisoftEmail = @arbisoftEmail ORDER BY email", new { arbisoftEmail }, cancellationToken);
     }
 
-    public Task<PagedResult<EmailMapping>> ListAsync(int page, int pageSize, CancellationToken cancellationToken)
+    public Task<PagedResult<EmailMapping>> ListAsync(string? search, int page, int pageSize, CancellationToken cancellationToken)
     {
-        return QueryPageAsync<EmailMapping>(Columns, "FROM EmailMappings", "arbisoftEmail, email", null, page, pageSize, cancellationToken);
+        // LIKE wildcards in the search text are escaped, so "_" and "%" match themselves.
+        var pattern = string.IsNullOrEmpty(search) ? null : $"%{search.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal)}%";
+        return QueryPageAsync<EmailMapping>(
+            Columns,
+            "FROM EmailMappings WHERE (@pattern IS NULL OR arbisoftEmail LIKE @pattern OR email LIKE @pattern)",
+            "arbisoftEmail, email",
+            new { pattern },
+            page,
+            pageSize,
+            cancellationToken);
+    }
+
+    public async Task<bool> ExistsAsync(string arbisoftEmail, string email, long? exceptId, CancellationToken cancellationToken)
+    {
+        var count = await QuerySingleOrDefaultAsync<int>(
+            "SELECT COUNT(*) FROM EmailMappings WHERE arbisoftEmail = @arbisoftEmail AND email = @email AND (@exceptId IS NULL OR id <> @exceptId)",
+            new { arbisoftEmail, email, exceptId },
+            cancellationToken);
+        return count > 0;
     }
 
     public Task<EmailMapping?> GetByIdAsync(long id, CancellationToken cancellationToken)
@@ -47,14 +65,14 @@ public sealed class EmailMappingRepository : RepositoryBase, IEmailMappingReposi
     public Task<long> InsertAsync(EmailMapping mapping, CancellationToken cancellationToken)
     {
         return InsertAsync(
-            "INSERT INTO EmailMappings (arbisoftEmail, email, createdOn) VALUES (@ArbisoftEmail, @Email, @CreatedOn)",
+            "INSERT INTO EmailMappings (arbisoftEmail, email, emailAsReceived, createdOn) VALUES (@ArbisoftEmail, @Email, @EmailAsReceived, @CreatedOn)",
             mapping,
             cancellationToken);
     }
 
     public async Task<bool> UpdateAsync(EmailMapping mapping, CancellationToken cancellationToken)
     {
-        var changed = await ExecuteAsync("UPDATE EmailMappings SET arbisoftEmail = @ArbisoftEmail, email = @Email WHERE id = @Id", mapping, cancellationToken);
+        var changed = await ExecuteAsync("UPDATE EmailMappings SET arbisoftEmail = @ArbisoftEmail, email = @Email, emailAsReceived = @EmailAsReceived WHERE id = @Id", mapping, cancellationToken);
         return changed > 0;
     }
 }

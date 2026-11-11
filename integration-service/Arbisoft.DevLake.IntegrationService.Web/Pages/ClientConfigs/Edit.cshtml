@@ -1,0 +1,54 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page "{clientRefId:long}"
+@using Arbisoft.DevLake.IntegrationService.Business.Services.Admin
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.ClientConfigs.EditModel
+@{
+    ViewData["Title"] = "Edit outbound config";
+}
+<h1>Outbound config for @Model.ClientName</h1>
+<form method="post" class="stack panel">
+  <label>Auth type
+    <select name="Form.AuthType">
+      @foreach (var type in ClientConfigService.KnownAuthTypes)
+      {
+          <option value="@type" selected="@(type == Model.Form.AuthType)">@type</option>
+      }
+    </select>
+  </label>
+  <label>Base URL <input type="url" name="Form.BaseUrl" value="@Model.Form.BaseUrl" maxlength="500" required placeholder="https://client.example.com"></label>
+  <p class="muted">Must use HTTPS. Plain HTTP is accepted only for localhost.</p>
+
+  <h2>OAuth2 client credentials</h2>
+  <label>Token URL <input type="url" name="Form.TokenUrl" value="@Model.Form.TokenUrl" maxlength="500"></label>
+  <label>Client ID <input type="text" name="Form.OutboundClientId" value="@Model.Form.OutboundClientId" maxlength="255" autocomplete="off"></label>
+  <label>Client secret <input type="password" name="Form.OutboundClientSecret" maxlength="2000" autocomplete="new-password"></label>
+  <p class="muted">@(Model.HasClientSecret ? "A secret is stored. Leave this blank to keep it; type a new one to rotate it." : "No secret is stored yet.")</p>
+  <label>Scope <input type="text" name="Form.OutboundScope" value="@Model.Form.OutboundScope" maxlength="255"></label>
+
+  <h2>Static API token</h2>
+  <label>API token <input type="password" name="Form.ApiToken" maxlength="4000" autocomplete="new-password"></label>
+  <p class="muted">@(Model.HasApiToken ? "A token is stored. Leave this blank to keep it; type a new one to rotate it." : "No token is stored yet.")</p>
+  <label>Token expires (UTC date) <input type="date" name="Form.TokenExpiresOn" value="@Model.Form.TokenExpiresOn?.ToString("yyyy-MM-dd")"></label>
+
+  <h2>Delivery</h2>
+  <label>Max attempts <input type="number" name="Form.MaxAttempts" value="@Model.Form.MaxAttempts" min="@ClientConfigService.MinAttempts" max="@ClientConfigService.MaxAttemptsLimit" required></label>
+  <label class="check"><input type="checkbox" name="Form.IsActive" value="true" @(Model.Form.IsActive ? "checked" : "")> Active (results are delivered)</label>
+  <input type="hidden" name="Form.IsActive" value="false">
+  <p class="muted">Only the fields for the chosen auth type are saved; the others are cleared.</p>
+  <div class="actions"><button type="submit">Save</button><a asp-page="Index">Cancel</a></div>
+</form>

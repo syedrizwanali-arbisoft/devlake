@@ -1,0 +1,80 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page "{clientRefId:long}"
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.ClientConfigs.DetailsModel
+@{
+    ViewData["Title"] = "Outbound config";
+    var details = Model.Details;
+    var config = details.Config;
+}
+<h1>Outbound config for @details.ClientName <span class="mono muted">@details.ClientId</span></h1>
+@if (config is null)
+{
+    <div class="panel"><p>This client has no outbound configuration, so its requests cannot be delivered.</p>
+    <div class="actions"><a class="button" asp-page="Edit" asp-route-clientRefId="@details.ClientRefId">Set up</a></div></div>
+}
+else
+{
+    <div class="panel">
+      <dl>
+        <dt>Auth type</dt><dd>@config.AuthType</dd>
+        <dt>Base URL</dt><dd class="mono">@config.BaseUrl</dd>
+        @if (config.AuthType == "OAuth2ClientCredentials")
+        {
+            <dt>Token URL</dt><dd class="mono">@config.TokenUrl</dd>
+            <dt>Client ID</dt><dd class="mono">@config.OutboundClientId</dd>
+            <dt>Scope</dt><dd class="mono">@(string.IsNullOrEmpty(config.OutboundScope) ? "none" : config.OutboundScope)</dd>
+            <dt>Client secret</dt><dd>@(config.HasClientSecret ? "Stored, encrypted" : "Not set")</dd>
+        }
+        else
+        {
+            <dt>API token</dt><dd>@(config.HasApiToken ? "Stored, encrypted" : "Not set")</dd>
+            <dt>Token expires</dt><dd>@AdminPageModel.Utc(config.TokenExpiresOn)</dd>
+        }
+        <dt>Last rotated</dt><dd>@AdminPageModel.Utc(config.TokenRotatedOn)</dd>
+        <dt>Max attempts</dt><dd>@config.MaxAttempts</dd>
+        <dt>Status</dt><dd><span class="badge @(config.IsActive ? "Active" : "Inactive")">@(config.IsActive ? "Active" : "Inactive")</span></dd>
+        <dt>Created</dt><dd>@AdminPageModel.Utc(config.CreatedOn) <span class="muted">by @config.CreatedBy</span></dd>
+        <dt>Modified</dt><dd>@AdminPageModel.Utc(config.ModifiedOn) <span class="muted">@(config.ModifiedBy is null ? "" : "by " + config.ModifiedBy)</span></dd>
+      </dl>
+      <div class="actions"><a class="button" asp-page="Edit" asp-route-clientRefId="@details.ClientRefId">Edit</a></div>
+    </div>
+    <h2>Callback URLs</h2>
+    <p class="muted">Where each kind of result is sent. Only one URL can be active per event type.</p>
+    <div class="actions"><a class="button" asp-page="/ClientConfigs/Urls/Create" asp-route-clientRefId="@details.ClientRefId">New URL</a></div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Event type</th><th>Method</th><th>Path</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      @foreach (var url in details.Urls)
+      {
+          <tr>
+            <td class="mono">@url.EventType</td>
+            <td>@url.Method</td>
+            <td class="mono">@url.Path</td>
+            <td><span class="badge @(url.IsActive ? "Active" : "Inactive")">@(url.IsActive ? "Active" : "Inactive")</span></td>
+            <td><a asp-page="/ClientConfigs/Urls/Edit" asp-route-clientRefId="@details.ClientRefId" asp-route-urlId="@url.Id">Edit</a></td>
+          </tr>
+      }
+      @if (details.Urls.Count == 0)
+      {
+          <tr><td colspan="5" class="muted">No URLs yet.</td></tr>
+      }
+      </tbody>
+    </table>
+    </div>
+}

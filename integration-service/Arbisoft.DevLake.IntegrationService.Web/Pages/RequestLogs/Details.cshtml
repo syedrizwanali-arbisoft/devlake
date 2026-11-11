@@ -1,0 +1,68 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page "{id:long}"
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.RequestLogs.DetailsModel
+@{
+    ViewData["Title"] = "Request " + Model.Log.CorrelationId;
+    var log = Model.Log;
+}
+<h1>Request <span class="mono">@log.CorrelationId</span></h1>
+<div class="panel">
+  <dl>
+    <dt>Client</dt><dd>@log.ClientName <span class="mono muted">@log.ClientId</span></dd>
+    <dt>Event type</dt><dd class="mono">@log.EventType</dd>
+    <dt>Status</dt><dd>@log.Status</dd>
+    <dt>Created</dt><dd>@AdminPageModel.Utc(log.CreatedOn)</dd>
+    <dt>Request</dt><dd class="mono long">@log.Url</dd>
+  </dl>
+</div>
+<h2>Body</h2>
+<p class="muted">As the client sent it. It holds engineer emails, so treat it as personal data.</p>
+@if (string.IsNullOrEmpty(log.Json))
+{
+    <p class="muted">No body was stored.</p>
+}
+else
+{
+    <pre class="panel mono">@log.Json</pre>
+}
+<h2>Delivery attempts</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>When</th><th>Outcome</th><th>By</th><th>Error</th></tr></thead>
+  <tbody>
+  @foreach (var attempt in log.Attempts)
+  {
+      <tr>
+        <td>@AdminPageModel.Utc(attempt.AttemptOn)</td>
+        <td>@attempt.AttemptStatus</td>
+        <td>@attempt.AttemptBy</td>
+        <td>@(attempt.FailureError ?? "")</td>
+      </tr>
+      @if (!string.IsNullOrEmpty(attempt.ResponseJson))
+      {
+          <tr><td colspan="4"><details><summary>The client's response</summary><pre class="mono">@attempt.ResponseJson</pre></details></td></tr>
+      }
+  }
+  @if (log.Attempts.Count == 0)
+  {
+      <tr><td colspan="4" class="muted">Not delivered yet.</td></tr>
+  }
+  </tbody>
+</table>
+</div>
+<p><a asp-page="Index">Back to the list</a></p>

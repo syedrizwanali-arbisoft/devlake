@@ -1,0 +1,52 @@
+@*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+    http:www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*@
+@page
+@model Arbisoft.DevLake.IntegrationService.Web.Pages.ClientConfigs.IndexModel
+@{
+    ViewData["Title"] = "Outbound configs";
+}
+<h1>Outbound configs</h1>
+<p class="muted">How the service calls each client back with the stats they asked for.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Client</th><th>Auth</th><th>Base URL</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  @foreach (var row in Model.Rows)
+  {
+      <tr>
+        <td>@row.ClientName <span class="mono muted">@row.ClientId</span></td>
+        @if (row.Config is { } config)
+        {
+            <td>@config.AuthType</td>
+            <td class="mono">@config.BaseUrl</td>
+            <td><span class="badge @(config.IsActive ? "Active" : "Inactive")">@(config.IsActive ? "Active" : "Inactive")</span></td>
+            <td><a asp-page="Details" asp-route-clientRefId="@row.ClientRefId">Open</a></td>
+        }
+        else
+        {
+            <td colspan="3" class="muted">Not configured</td>
+            <td><a asp-page="Edit" asp-route-clientRefId="@row.ClientRefId">Set up</a></td>
+        }
+      </tr>
+  }
+  @if (Model.Rows.Count == 0)
+  {
+      <tr><td colspan="5" class="muted">No clients yet. Create one first.</td></tr>
+  }
+  </tbody>
+</table>
+</div>

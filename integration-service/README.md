@@ -76,7 +76,12 @@ Every page needs the sign-in (the fallback policy is deny), POSTs need an anti-f
 - **Signing keys:** list the keys and rotate the active one. Rotation generates an RSA key, stores the private half encrypted, activates the new key and retires the old one in one transaction. Retired keys stay, so tokens already issued keep verifying until they expire.
 - **Access tokens:** list the 200 most recent and revoke one with a reason. The reason also records who revoked it, because the table has no "revoked by" column.
 
-Lists show at most 200 rows.
+- **Email mappings:** list (50 a page, with search), create and edit the other emails each engineer commits with. Both addresses are trimmed and lower-cased by `EmailNormalizer` before they are compared or stored, the Arbisoft address must be in `Requests:AllowedEmailDomains`, and the mapped address is also kept as typed. The matched columns use a binary collation, so SQL compares exactly what the code compares.
+- **Outbound configs:** one per client. Choose OAuth2 client credentials or a static API token, the base URL (HTTPS; plain HTTP only for localhost), max delivery attempts (1 to 10) and the active flag. Secrets are encrypted before they are stored and are never shown again: leave a field blank to keep the stored value, or type a new one to rotate it. The page shows whether one is stored, when it was last rotated and, for a token, when it expires. Fields for the other auth type are cleared on save.
+- **Callback URLs:** for each config, the event type to method and path mappings. The path is checked with the same code that builds the calls, so it must start with a single `/` and stay on the base URL's host. Only one URL can be active per event type.
+- **Request logs:** filter by client, status and UTC dates (50 a page), and open a request to see its JSON body and every delivery attempt with the client's response. The body holds engineer emails, so it is shown only here.
+
+The client, scope, key and token lists show at most 200 rows.
 
 ## Request queue
 

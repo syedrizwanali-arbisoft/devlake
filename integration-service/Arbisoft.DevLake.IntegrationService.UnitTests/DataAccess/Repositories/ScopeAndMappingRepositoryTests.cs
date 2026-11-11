@@ -53,9 +53,9 @@ public class ScopeAndMappingRepositoryTests : RepositoryTestBase
         var repository = Get<IEmailMappingRepository>();
         var owner = $"{Unique("owner")}@arbisoft.com";
         var other = $"{Unique("other")}@arbisoft.com";
-        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "b@users.noreply.github.com", CreatedOn = Instant }, CancellationToken.None);
-        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "a@gmail.com", CreatedOn = Instant }, CancellationToken.None);
-        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = other, Email = "c@gmail.com", CreatedOn = Instant }, CancellationToken.None);
+        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "b@users.noreply.github.com", EmailAsReceived = "b@users.noreply.github.com", CreatedOn = Instant }, CancellationToken.None);
+        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "a@gmail.com", EmailAsReceived = "a@gmail.com", CreatedOn = Instant }, CancellationToken.None);
+        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = other, Email = "c@gmail.com", EmailAsReceived = "c@gmail.com", CreatedOn = Instant }, CancellationToken.None);
 
         var emails = await repository.GetMappedEmailsAsync(owner, CancellationToken.None);
 
@@ -63,26 +63,53 @@ public class ScopeAndMappingRepositoryTests : RepositoryTestBase
     }
 
     [MySqlFact]
-    public async Task EmailMapping_LookupIgnoresCase_AndDuplicatePairIsRejected()
+    public async Task EmailMapping_LookupIsExact_AndDuplicatePairIsRejected()
     {
         var repository = Get<IEmailMappingRepository>();
         var owner = $"{Unique("case")}@arbisoft.com";
-        var id = await repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "x@gmail.com", CreatedOn = Instant }, CancellationToken.None);
+        var id = await repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "x@gmail.com", EmailAsReceived = "x@gmail.com", CreatedOn = Instant }, CancellationToken.None);
 
-        Assert.Single(await repository.GetMappedEmailsAsync(owner.ToUpperInvariant(), CancellationToken.None));
+        Assert.Single(await repository.GetMappedEmailsAsync(owner, CancellationToken.None));
+        Assert.Empty(await repository.GetMappedEmailsAsync(owner.ToUpperInvariant(), CancellationToken.None)); // The caller normalizes; the column is binary.
         Assert.True(await repository.UpdateAsync(new EmailMapping { Id = id, ArbisoftEmail = owner, Email = "y@gmail.com" }, CancellationToken.None));
 
         var duplicate = await Assert.ThrowsAsync<MySqlException>(() =>
-            repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "y@gmail.com", CreatedOn = Instant }, CancellationToken.None));
+            repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "y@gmail.com", EmailAsReceived = "y@gmail.com", CreatedOn = Instant }, CancellationToken.None));
         Assert.Equal(MySqlErrorCode.DuplicateKeyEntry, duplicate.ErrorCode);
     }
 
     [MySqlFact]
     public async Task EmailMapping_List_ClampsPageSizeToTheMaximum()
     {
-        var page = await Get<IEmailMappingRepository>().ListAsync(0, 100000, CancellationToken.None);
+        var page = await Get<IEmailMappingRepository>().ListAsync(null, 0, 100000, CancellationToken.None);
 
         Assert.Equal(1, page.Page);
         Assert.Equal(RepositoryBase.MaxPageSize, page.PageSize);
+    }
+
+    [MySqlFact]
+    public async Task EmailMapping_Exists_FindsThePair_AndIgnoresTheMappingBeingEdited()
+    {
+        var repository = Get<IEmailMappingRepository>();
+        var owner = $"{Unique("exists")}@arbisoft.com";
+        var id = await repository.InsertAsync(new EmailMapping { ArbisoftEmail = owner, Email = "x@gmail.com", EmailAsReceived = "X@Gmail.com", CreatedOn = Instant }, CancellationToken.None);
+
+        Assert.True(await repository.ExistsAsync(owner, "x@gmail.com", null, CancellationToken.None));
+        Assert.False(await repository.ExistsAsync(owner, "x@gmail.com", id, CancellationToken.None));
+        Assert.False(await repository.ExistsAsync(owner, "z@gmail.com", null, CancellationToken.None));
+        Assert.Equal("X@Gmail.com", (await repository.GetByIdAsync(id, CancellationToken.None))!.EmailAsReceived);
+    }
+
+    [MySqlFact]
+    public async Task EmailMapping_Search_MatchesEitherAddress_AndTreatsWildcardsAsText()
+    {
+        var repository = Get<IEmailMappingRepository>();
+        var tag = Unique("srch").ToLowerInvariant();
+        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = $"{tag}@arbisoft.com", Email = "plain@gmail.com", EmailAsReceived = "plain@gmail.com", CreatedOn = Instant }, CancellationToken.None);
+        await repository.InsertAsync(new EmailMapping { ArbisoftEmail = $"{tag}2@arbisoft.com", Email = $"{tag}_a@gmail.com", EmailAsReceived = $"{tag}_a@gmail.com", CreatedOn = Instant }, CancellationToken.None);
+
+        Assert.Equal(2, (await repository.ListAsync(tag, 1, 50, CancellationToken.None)).TotalCount);
+        Assert.Equal(1, (await repository.ListAsync($"{tag}_", 1, 50, CancellationToken.None)).TotalCount);
+        Assert.Equal(0, (await repository.ListAsync($"{tag}%", 1, 50, CancellationToken.None)).TotalCount);
     }
 }

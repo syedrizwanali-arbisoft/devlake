@@ -21,5 +21,8 @@ public sealed class EmailMapping
     public long Id { get; init; }
     public string ArbisoftEmail { get; init; } = string.Empty;
     public string Email { get; init; } = string.Empty;
+
+    /// <summary>The mapped address exactly as the admin typed it. <see cref="Email"/> is the normalized form that is matched.</summary>
+    public string EmailAsReceived { get; init; } = string.Empty;
     public DateTimeOffset CreatedOn { get; init; }
 }

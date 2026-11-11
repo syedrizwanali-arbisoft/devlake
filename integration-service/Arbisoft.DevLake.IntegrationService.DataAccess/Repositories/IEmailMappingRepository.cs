@@ -22,7 +22,11 @@ public interface IEmailMappingRepository
     /// <summary>The other emails an engineer commits with, not including the Arbisoft email itself.</summary>
     Task<IReadOnlyList<string>> GetMappedEmailsAsync(string arbisoftEmail, CancellationToken cancellationToken);
 
-    Task<PagedResult<EmailMapping>> ListAsync(int page, int pageSize, CancellationToken cancellationToken);
+    /// <summary>Lists mappings, optionally only those where either address contains <paramref name="search"/> (already normalized by the caller).</summary>
+    Task<PagedResult<EmailMapping>> ListAsync(string? search, int page, int pageSize, CancellationToken cancellationToken);
+
+    /// <summary>True when the pair exists, ignoring the mapping with id <paramref name="exceptId"/> so an edit does not clash with itself.</summary>
+    Task<bool> ExistsAsync(string arbisoftEmail, string email, long? exceptId, CancellationToken cancellationToken);
 
     Task<EmailMapping?> GetByIdAsync(long id, CancellationToken cancellationToken);
 

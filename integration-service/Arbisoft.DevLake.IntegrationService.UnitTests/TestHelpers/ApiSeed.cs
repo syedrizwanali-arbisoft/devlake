@@ -176,7 +176,7 @@ public sealed class ApiSeed
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<IEmailMappingRepository>().InsertAsync(
-            new EmailMapping { ArbisoftEmail = arbisoftEmail, Email = email, CreatedOn = DateTimeOffset.UtcNow }, CancellationToken.None);
+            new EmailMapping { ArbisoftEmail = arbisoftEmail.ToLowerInvariant(), Email = email.ToLowerInvariant(), EmailAsReceived = email, CreatedOn = DateTimeOffset.UtcNow }, CancellationToken.None);
     }
 
     /// <summary>Turns a client's callback URL for an event type off, as an administrator would.</summary>

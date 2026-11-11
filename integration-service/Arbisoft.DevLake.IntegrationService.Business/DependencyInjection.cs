@@ -59,6 +59,9 @@ public static class DependencyInjection
         services.AddScoped<IScopeService, ScopeService>();
         services.AddScoped<ISigningKeyService, SigningKeyService>();
         services.AddScoped<IAccessTokenService, AccessTokenService>();
+        services.AddScoped<IEmailMappingService, EmailMappingService>();
+        services.AddScoped<IClientConfigService, ClientConfigService>();
+        services.AddScoped<IRequestLogService, RequestLogService>();
         services.AddScoped<IIdempotencyCheck, IdempotencyCheck>();
         services.AddScoped<IRequestService, RequestService>();
         services.AddScoped<ICallbackAvailability, CallbackAvailability>();

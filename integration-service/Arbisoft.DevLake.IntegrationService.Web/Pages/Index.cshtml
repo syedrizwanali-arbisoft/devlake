@@ -20,11 +20,14 @@ limitations under the License.
 }
 <h1>Integration Service Admin</h1>
 <div class="panel">
-  <p>Manage who can call the Integration Service and how their tokens are signed.</p>
+  <p>Manage who can call the Integration Service, how their tokens are signed, and how results are delivered back.</p>
   <ul>
     <li><a asp-page="/Clients/Index">Clients</a>: registered systems, their secrets and scopes.</li>
     <li><a asp-page="/Scopes/Index">Scopes</a>: permissions a token can carry.</li>
     <li><a asp-page="/SigningKeys/Index">Signing keys</a>: the keys that sign tokens, and rotation.</li>
     <li><a asp-page="/AccessTokens/Index">Access tokens</a>: issued tokens, and revocation.</li>
+    <li><a asp-page="/EmailMappings/Index">Email mappings</a>: the other emails each engineer commits with.</li>
+    <li><a asp-page="/ClientConfigs/Index">Outbound configs</a>: how each client is called back, and its callback URLs.</li>
+    <li><a asp-page="/RequestLogs/Index">Request logs</a>: every stats request, its body and delivery attempts.</li>
   </ul>
 </div>

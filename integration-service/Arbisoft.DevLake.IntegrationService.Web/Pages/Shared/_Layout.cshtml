@@ -59,6 +59,7 @@ limitations under the License.
     .errors { padding:10px 12px; border-radius:6px; border:1px solid var(--danger); color:var(--danger); margin-bottom:16px; }
     .errors ul { margin:0; padding-left:18px; }
     .secret { padding:12px; border:2px dashed var(--accent); border-radius:8px; margin:12px 0; }
+    pre { margin:0; overflow:auto; white-space:pre-wrap; word-break:break-word; }
     dl { display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0; }
     dt { color:var(--muted); }
   </style>
@@ -73,6 +74,9 @@ limitations under the License.
           <a asp-page="/Scopes/Index">Scopes</a>
           <a asp-page="/SigningKeys/Index">Signing keys</a>
           <a asp-page="/AccessTokens/Index">Access tokens</a>
+          <a asp-page="/EmailMappings/Index">Email mappings</a>
+          <a asp-page="/ClientConfigs/Index">Outbound configs</a>
+          <a asp-page="/RequestLogs/Index">Request logs</a>
           <form method="post" asp-page="/Account/Logout"><button class="link" type="submit">Sign out (@User.Identity.Name)</button></form>
       }
     </nav>
