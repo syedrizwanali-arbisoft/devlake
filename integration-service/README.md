@@ -48,10 +48,15 @@ Settings live in each project's `appsettings.json`. Secrets are never put there.
 export Database__ConnectionString="Server=127.0.0.1;Port=3308;Database=integration;User=integration;Password=<password>"
 export RabbitMq__UserName=<user> RabbitMq__Password=<password>
 export DevLake__ApiToken=<token> Workstream__ApiToken=<token>
+export Security__EncryptionKey=$(openssl rand -base64 32)   # keep it: it decrypts the stored secrets
 dotnet run --project Arbisoft.DevLake.IntegrationService.API
 ```
 
-The host refuses to start if a required setting is missing. Health endpoints: `/health/live` and `/health/ready`.
+The host refuses to start if a required setting is missing or `Security__EncryptionKey` is not 32 bytes of base64.
+
+Private signing keys are stored AES-256-GCM encrypted in the `SecretStoreEntries` table, named by `SigningKeys.privateKeyRef`. An environment variable `Secrets__<privateKeyRef>` overrides the stored copy, so a deployment can keep a key in a vault instead. If the master key is lost, rotate to a new signing key: tokens signed with the old one still verify because public keys are in the database.
+
+Health endpoints: `/health/live` and `/health/ready`.
 
 ## Build and test
 

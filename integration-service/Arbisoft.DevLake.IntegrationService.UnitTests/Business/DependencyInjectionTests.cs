@@ -14,17 +14,53 @@
 // limitations under the License.
 
 using Arbisoft.DevLake.IntegrationService.Business;
+using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Arbisoft.DevLake.IntegrationService.UnitTests.TestHelpers;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Arbisoft.DevLake.IntegrationService.UnitTests.Business;
 
 public class DependencyInjectionTests
 {
+    private static ServiceProvider Build(string? encryptionKey)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["Security:EncryptionKey"] = encryptionKey,
+            ["Security:Issuer"] = SecurityTestData.Issuer,
+            ["Security:Audience"] = SecurityTestData.Audience
+        };
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        return new ServiceCollection().AddBusiness(configuration).BuildServiceProvider(validateScopes: true);
+    }
+
     [Fact]
     public void AddBusiness_ReturnsTheSameCollectionForChaining()
     {
         var services = new ServiceCollection();
 
-        Assert.Same(services, services.AddBusiness());
+        Assert.Same(services, services.AddBusiness(new ConfigurationBuilder().Build()));
+    }
+
+    [Fact]
+    public void AddBusiness_WithAValidKey_ResolvesTheSecurityServices()
+    {
+        using var provider = Build(SecurityTestData.NewEncryptionKey());
+
+        Assert.NotNull(provider.GetRequiredService<ISecretEncryptor>());
+        Assert.NotNull(provider.GetRequiredService<IClientSecretHasher>());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-base64!")]
+    [InlineData("c2hvcnQ=")]
+    public void AddBusiness_WithABadMasterKey_FailsValidation(string key)
+    {
+        using var provider = Build(key);
+
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<SecurityOptions>>().Value);
     }
 }

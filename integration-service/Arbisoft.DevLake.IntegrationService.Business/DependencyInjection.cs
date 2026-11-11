@@ -13,15 +13,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Arbisoft.DevLake.IntegrationService.Business.Security;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Arbisoft.DevLake.IntegrationService.Business;
 
 public static class DependencyInjection
 {
     /// <summary>Registers everything in the Business layer: services, security and DTO helpers.</summary>
-    public static IServiceCollection AddBusiness(this IServiceCollection services)
+    public static IServiceCollection AddBusiness(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddOptions<SecurityOptions>()
+            .Bind(configuration.GetSection(SecurityOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SecurityOptions>, SecurityOptionsValidator>();
+
+        services.AddMemoryCache();
+        services.AddSingleton<ISecretEncryptor, SecretEncryptor>();
+        services.AddSingleton<IClientSecretHasher, ClientSecretHasher>();
+        services.AddScoped<ISecretStore, SecretStore>();
+        services.AddScoped<ISigningKeyProvider, SigningKeyProvider>();
+        services.AddScoped<ITokenGenerator, JwtTokenGenerator>();
         return services;
     }
 }

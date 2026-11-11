@@ -34,7 +34,7 @@ builder.Host.UseDefaultServiceProvider(options =>
 builder.Services.AddRazorPages();
 builder.Services.AddHealthChecks();
 builder.Services.AddDataAccess(builder.Configuration);
-builder.Services.AddBusiness();
+builder.Services.AddBusiness(builder.Configuration);
 
 var app = builder.Build();
 

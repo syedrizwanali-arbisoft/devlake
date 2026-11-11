@@ -27,7 +27,7 @@ public class MigrationTests
     private static readonly string[] ExpectedTables =
     [
         "EmailMappings", "Clients", "ClientSecrets", "ClientScopes", "Scopes", "SigningKeys", "AccessTokens",
-        "RequestLogs", "RequestLogJsons", "RequestResponseAttempts", "ClientConfigs", "ClientConfigOutboundUrls"
+        "RequestLogs", "RequestLogJsons", "RequestResponseAttempts", "ClientConfigs", "ClientConfigOutboundUrls", "SecretStoreEntries"
     ];
 
     private readonly MySqlDatabaseFixture _fixture;
@@ -66,7 +66,8 @@ public class MigrationTests
             .Where(name => name.EndsWith(".sql", StringComparison.Ordinal))
             .ToList();
 
-        Assert.Single(names);
-        Assert.EndsWith(".Persistence.Migrations.001_InitialSchema.sql", names[0], StringComparison.Ordinal);
+        Assert.Equal(2, names.Count);
+        Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.001_InitialSchema.sql", StringComparison.Ordinal));
+        Assert.Contains(names, name => name.EndsWith(".Persistence.Migrations.002_SecretStore.sql", StringComparison.Ordinal));
     }
 }
