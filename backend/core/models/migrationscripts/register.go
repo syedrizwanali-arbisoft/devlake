@@ -160,5 +160,6 @@ func All() []plugin.MigrationScript {
 		new(addAiPromptEffort),
 		new(addAiPromptFailures),
 		new(addAiPromptFailuresPromptIndex),
+		new(addWorkstreamProjects),
 	}
 }

@@ -202,6 +202,15 @@ Only read calls retry (timeouts, 5xx and 429, never a 4xx). The Sophia callback 
 - The list is complete or it is an error. A failure on any page returns an error and no projects, because a partial list would make DevLake think projects had been removed. A project listed on two pages is returned once.
 - **Workstream's response shape is not documented**, so the mapper accepts the usual names: a bare array or an object holding the list under `results`, `data`, `items` or `projects`; `id`, `project_id`, `projectId` or `uuid`; `name`, `title`, `project_name` or `projectName`; and a team lead as an object under `team_lead`, `teamLead`, `lead`, `manager` or `project_manager` (or as flat `team_lead_name` and `team_lead_email` fields). A project with no id or no name fails the whole call. Once Workstream's real shape is known, `ProjectMapper` is the one place to change.
 
+### Loading projects into DevLake
+
+DevLake calls this from its **Project Ingestion** screen (admins only), through `POST /projects/load`. To set it up:
+
+1. In the admin portal, create a client for DevLake with the `projects:fetch` scope, and issue it a secret.
+2. Set `INTEGRATION_SERVICE_URL`, `INTEGRATION_SERVICE_CLIENT_ID` and `INTEGRATION_SERVICE_CLIENT_SECRET` in DevLake's `.env`. They stay on the server and never reach the browser. With any of the three empty, project ingestion is off. `INTEGRATION_SERVICE_TIMEOUT_SECONDS` (default 60) bounds one load.
+
+DevLake gets a token from `POST /auth/token/`, calls `GET /fetch/projects`, and saves each project and its team lead in `workstream_projects`, keyed by Workstream ID, so loading again updates rows instead of duplicating them. `GET /workstream-projects` lists them and links each to the DevLake project of the same name. A load never creates DevLake projects.
+
 Errors (all `ProblemDetails` with a `code` and the correlation ID, and never any Workstream data):
 
 | Status | `code` | When |
