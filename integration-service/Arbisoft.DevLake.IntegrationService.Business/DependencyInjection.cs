@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IIdempotencyCheck, IdempotencyCheck>();
         services.AddScoped<IRequestService, RequestService>();
         services.AddScoped<IRequestHandler, RequestHandler>();
+        services.AddScoped<IRequestStatusService, RequestStatusService>();
         return services;
     }
 }

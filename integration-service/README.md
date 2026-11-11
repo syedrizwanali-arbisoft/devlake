@@ -81,6 +81,20 @@ Failed, expired and unreadable messages go to `<queue>.dead` through the `<queue
 - **Duplicates:** an identical request (same client, emails and time frame) inside the duplicate window returns the original acknowledgement. A unique key in the database is what prevents the duplicate, so concurrent identical requests also produce one. Revoked and failed requests never block a repeat.
 - **Queue problems:** 429 with `Retry-After` when the queue is full, 503 with `Retry-After` when the broker is unreachable. Nothing is recorded in either case.
 
+## Request status
+
+`GET /api/v1/requests/poll/{uuid}` (scope `stats:read`) takes the `correlation_id` from a stats response and answers at once with `{ "correlation_id", "status", "check_time" }`. `check_time` is the time of the call in UTC, for example `2026-11-05T14:02:55Z`. The status is one of these, spelled exactly like this:
+
+| Request log status | Poll status |
+|---|---|
+| Received, Queued | `Queued` |
+| Processing, Processed | `Processing` |
+| Success | `Success` |
+| Failed | `Failure` |
+| Revoked - no callback URL | `Revoked` |
+
+A client can only read its own requests. An unknown ID and another client's ID both return the same 404, and a malformed ID returns 400. The poll API has its own rate limit (`RateLimits:PollPerMinute`).
+
 These settings can be changed without code changes:
 
 | Setting | Default | Effect |

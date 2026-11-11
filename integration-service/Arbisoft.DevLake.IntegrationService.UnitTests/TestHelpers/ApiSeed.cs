@@ -136,6 +136,25 @@ public sealed class ApiSeed
         }
     }
 
+    /// <summary>Puts a request log with the given status straight into the database and returns its correlation ID.</summary>
+    public async Task<string> SeedRequestAsync(SeededClient client, string status)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var correlationId = Guid.NewGuid().ToString("D");
+        await scope.ServiceProvider.GetRequiredService<IRequestLogRepository>().InsertAsync(
+            new RequestLog
+            {
+                ClientRefId = client.ClientRefId,
+                CorrelationId = correlationId,
+                Url = "/api/v1/engineers/{email}/stats?tf={timeFrame}",
+                Status = status,
+                EventType = "engineer-stats",
+                CreatedOn = DateTimeOffset.UtcNow
+            },
+            CancellationToken.None);
+        return correlationId;
+    }
+
     /// <summary>Runs a statement straight on the test database, for setting up a state a test needs, such as an old request.</summary>
     public async Task ExecuteAsync(string sql, object? parameters = null)
     {
