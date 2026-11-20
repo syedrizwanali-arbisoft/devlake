@@ -167,3 +167,40 @@ func TestRequireWith(t *testing.T) {
 		}
 	})
 }
+
+func TestRequireAdminOrAPIKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		checker   fakeChecker
+		restAuth  bool
+		principal *access.Principal
+		want      int
+	}{
+		{name: "api key passes", checker: fakeChecker{enabled: true, err: errors.Forbidden.New("no session")}, restAuth: true, want: http.StatusOK},
+		{name: "api key passes when access is disabled", checker: fakeChecker{enabled: false}, restAuth: true, want: http.StatusOK},
+		{name: "session admin passes", checker: fakeChecker{enabled: true}, want: http.StatusOK},
+		{name: "session non-admin is denied", checker: fakeChecker{enabled: true, err: errors.Forbidden.New("member")}, want: http.StatusForbidden},
+		{name: "session passes when access is disabled", checker: fakeChecker{enabled: false}, want: http.StatusOK},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := call(newRouter(requireAdminOrAPIKeyWith(tc.checker), tc.restAuth, tc.principal), "")
+			if resp.Code != tc.want {
+				t.Errorf("status = %d, want %d", resp.Code, tc.want)
+			}
+		})
+	}
+
+	t.Run("the exported middleware denies a member session", func(t *testing.T) {
+		principal := &access.Principal{UserID: 2, Role: access.RoleMember}
+		if code := call(newRouter(RequireAdminOrAPIKey(), false, principal), "").Code; code != http.StatusForbidden {
+			t.Fatalf("expected a member session to be denied, got %d", code)
+		}
+	})
+
+	t.Run("the exported middleware admits an api key", func(t *testing.T) {
+		if code := call(newRouter(RequireAdminOrAPIKey(), true, nil), "").Code; code != http.StatusOK {
+			t.Fatalf("expected an API-key caller to pass, got %d", code)
+		}
+	})
+}

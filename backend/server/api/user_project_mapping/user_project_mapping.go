@@ -61,14 +61,14 @@ func GetMappingsByUser(c *gin.Context) {
 }
 
 // @Summary Create a user-project mapping
-// @Description Assigns a project to a Grafana user login. Creating a mapping that exists already succeeds. Only a customer admin's session can call it.
+// @Description Assigns a project to a Grafana user login. Creating a mapping that exists already succeeds. A customer admin's session can call it, and so can a REST API key whose allowed path covers it (call it as /rest/user-project-mappings/{userLogin}).
 // @Tags framework/user-project-mappings
 // @Accept application/json
 // @Param userLogin path string true "Grafana user login"
 // @Param body body object true "json"
 // @Success 201 {object} models.UserProjectMapping
 // @Failure 400 {string} errcode.Error "Bad Request, or the project doesn't exist"
-// @Failure 403 {string} errcode.Error "Administrator role required"
+// @Failure 403 {string} errcode.Error "Administrator role or an API key required"
 // @Failure 500 {string} errcode.Error "Internal Error"
 // @Router /user-project-mappings/{userLogin} [post]
 func PostMapping(c *gin.Context) {

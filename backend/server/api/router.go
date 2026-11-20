@@ -110,10 +110,12 @@ func RegisterRouter(r *gin.Engine, basicRes context.BasicRes) {
 	registerIntegrationRoutes(r, basicRes)
 
 	// user project mapping api
-	// admin-only: customer-admin sessions; API keys can't manage keys or project access
+	// Customer-admin sessions only, except that an API key may grant access: the Integration Service gives each
+	// Workstream team lead access to their project. Its key's allowed path limits it; API keys still can't list or
+	// remove access, or manage keys.
 	r.GET("/user-project-mappings", admin, userprojectmapping.GetAllMappings)
 	r.GET("/user-project-mappings/:userLogin", admin, userprojectmapping.GetMappingsByUser)
-	r.POST("/user-project-mappings/:userLogin", admin, userprojectmapping.PostMapping)
+	r.POST("/user-project-mappings/:userLogin", adminonly.RequireAdminOrAPIKey(), userprojectmapping.PostMapping)
 	r.DELETE("/user-project-mappings/:userLogin/:projectName", admin, userprojectmapping.DeleteMapping)
 
 	// mount all api resources for all plugins

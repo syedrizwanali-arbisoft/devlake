@@ -37,6 +37,24 @@ func Require() gin.HandlerFunc {
 	return requireWith(access.Default())
 }
 
+// RequireAdminOrAPIKey admits a DevLake customer admin's session, like Require, and also any REST API-key caller.
+// RestAuthentication has already checked the key and that its allowed path covers the route, so the key's allowed
+// path is the only limit on what the key can do here. Use it only on routes an automated client must reach.
+func RequireAdminOrAPIKey() gin.HandlerFunc {
+	return requireAdminOrAPIKeyWith(access.Default())
+}
+
+func requireAdminOrAPIKeyWith(accessService accessChecker) gin.HandlerFunc {
+	adminOnly := requireWith(accessService)
+	return func(c *gin.Context) {
+		if _, viaApiKey := shared.GetRestAuthUser(c.Request); viaApiKey {
+			c.Next()
+			return
+		}
+		adminOnly(c)
+	}
+}
+
 func requireWith(accessService accessChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if _, viaApiKey := shared.GetRestAuthUser(c.Request); viaApiKey {
