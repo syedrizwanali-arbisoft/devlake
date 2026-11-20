@@ -46,3 +46,15 @@ Please Note: You must know the schema you are inserting into (column names, type
 
 
 
+
+## Which tables you can write
+
+Set `PUSH_API_ALLOWED_TABLES` to a comma-separated list, such as `commits,issues`, to allow only those tables.
+When it is not set, every table is allowed except the protected ones below.
+
+These tables are always refused with 403, even when `PUSH_API_ALLOWED_TABLES` lists them, because they control
+access:
+
+- tables starting with `_devlake_`, such as `_devlake_api_keys`
+- tables starting with `auth_`, such as `auth_sessions`
+- `user_project_mapping`

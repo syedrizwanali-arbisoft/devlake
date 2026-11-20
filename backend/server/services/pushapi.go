@@ -25,10 +25,38 @@ import (
 	"github.com/apache/incubator-devlake/core/errors"
 )
 
-// InsertRow FIXME ...
+// protectedTablePrefixes and protectedTables are the tables that control access: DevLake's own tables (API keys,
+// pipelines, blueprints), sign-in and access tables, and the user to project mapping that scopes the dashboards. The
+// push API never writes them, even when PUSH_API_ALLOWED_TABLES lists them, because any API key whose allowed path
+// covers /push could otherwise give itself more access.
+var (
+	protectedTablePrefixes = []string{"_devlake_", "auth_"}
+	protectedTables        = map[string]bool{"user_project_mapping": true}
+)
+
+// isProtectedTable reports whether table is one the push API must never write. Table names are compared in lowercase,
+// because MySQL may treat them case-insensitively.
+func isProtectedTable(table string) bool {
+	table = strings.ToLower(table)
+	if protectedTables[table] {
+		return true
+	}
+	for _, prefix := range protectedTablePrefixes {
+		if strings.HasPrefix(table, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// InsertRow inserts rows into table for the push API. table must be a plain table name, not a protected table, and in
+// PUSH_API_ALLOWED_TABLES when that is set.
 func InsertRow(table string, rows []map[string]interface{}) (int64, errors.Error) {
 	if !regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(table) {
 		return 0, errors.BadInput.New("table name invalid")
+	}
+	if isProtectedTable(table) {
+		return 0, errors.Forbidden.New("the push API can't write this table")
 	}
 
 	if allowedTables := cfg.GetString("PUSH_API_ALLOWED_TABLES"); allowedTables != "" {
