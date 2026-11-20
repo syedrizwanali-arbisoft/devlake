@@ -36,19 +36,9 @@ const (
 	dayLayout = "2006-01-02"
 	// monthLayout formats the months the monthly AI rows carry.
 	monthLayout = "2006-01"
-	// jiraIDLike is the LIKE pattern for the domain ids of the Jira issues that count as an engineer's activity.
-	jiraIDLike = "jira:%"
-	// githubIDLike is the LIKE pattern for the domain ids of the GitHub commits and pull requests that count as an
-	// engineer's activity.
-	githubIDLike = "github:%"
 	// zeroCost is the total for an engineer with no AI cost records.
 	zeroCost = "0.00000000"
 )
-
-// activityReader finds when an engineer was first active. repositories.Activity satisfies it.
-type activityReader interface {
-	FirstActivity(email, issueIDLike, codeIDLike string) (*time.Time, errors.Error)
-}
 
 // ticketStatsReader reads the issues of an engineer's ticket tracker, such as Jira. repositories.Issues satisfies it.
 type ticketStatsReader interface {
@@ -79,7 +69,6 @@ type aiReader interface {
 }
 
 var (
-	_ activityReader            = (*repositories.Activity)(nil)
 	_ ticketStatsReader         = (*repositories.Issues)(nil)
 	_ versionControlStatsReader = (*repositories.Code)(nil)
 	_ aiReader                  = (*repositories.AI)(nil)
@@ -88,7 +77,6 @@ var (
 // StatsService turns an engineer's email and period into stats: it validates the input, resolves the window, reads
 // through the repositories and shapes the response. It is safe for concurrent use.
 type StatsService struct {
-	activity            activityReader
 	ticketStats         ticketStatsReader
 	versionControlStats versionControlStatsReader
 	ai                  aiReader
@@ -104,11 +92,11 @@ func WithClock(now func() time.Time) Option {
 }
 
 // NewStatsService returns a service that reads through the given repositories, none of which may be nil.
-func NewStatsService(activity activityReader, ticketStats ticketStatsReader, versionControlStats versionControlStatsReader, ai aiReader, opts ...Option) (*StatsService, errors.Error) {
-	if activity == nil || ticketStats == nil || versionControlStats == nil || ai == nil {
+func NewStatsService(ticketStats ticketStatsReader, versionControlStats versionControlStatsReader, ai aiReader, opts ...Option) (*StatsService, errors.Error) {
+	if ticketStats == nil || versionControlStats == nil || ai == nil {
 		return nil, errors.Default.New("stats service: nil repository")
 	}
-	s := &StatsService{activity: activity, ticketStats: ticketStats, versionControlStats: versionControlStats, ai: ai, now: time.Now}
+	s := &StatsService{ticketStats: ticketStats, versionControlStats: versionControlStats, ai: ai, now: time.Now}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -124,37 +112,11 @@ func (s *StatsService) window(email string, p utils.Period) (StatsWindow, errors
 	if err != nil {
 		return StatsWindow{}, err
 	}
-	if p.Since != "" {
-		return s.sinceWindow(normalized, p)
-	}
 	from, to, timeFrame, err := p.Resolve(s.now())
 	if err != nil {
 		return StatsWindow{}, err
 	}
 	return StatsWindow{Email: normalized, TimeFrame: timeFrame, From: from, To: to}, nil
-}
-
-// sinceJoining is the only value since accepts.
-const sinceJoining = "joining"
-
-// sinceWindow resolves since=joining to [first activity, now). An email with no activity gets an empty window at now.
-func (s *StatsService) sinceWindow(email string, p utils.Period) (StatsWindow, errors.Error) {
-	if p.Since != sinceJoining {
-		return StatsWindow{}, errors.BadInput.New("since must be joining")
-	}
-	if p.TimeFrame != "" || p.From != "" || p.To != "" {
-		return StatsWindow{}, errors.BadInput.New("give one of tf, since, or from and to")
-	}
-	to := s.now().UTC()
-	joined, err := s.activity.FirstActivity(email, jiraIDLike, githubIDLike)
-	if err != nil {
-		return StatsWindow{}, err
-	}
-	from := to
-	if joined != nil && joined.Before(to) {
-		from = joined.UTC()
-	}
-	return StatsWindow{Email: email, Since: sinceJoining, From: from, To: to}, nil
 }
 
 // normalizeEmail accepts a bare address only and lowercases it, because the stored emails are case-sensitive.
