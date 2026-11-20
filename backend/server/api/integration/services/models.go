@@ -25,8 +25,6 @@ type StatsWindow struct {
 	Email string `json:"email" example:"abc@arbisoft.com"`
 	// TimeFrame is the tf query parameter as given. It is left out when the request used from and to.
 	TimeFrame string `json:"timeFrame,omitempty" example:"1w"`
-	// Since is "joining" when the window starts at the engineer's first activity. It is left out otherwise.
-	Since string `json:"since,omitempty" example:"joining"`
 	// From is the inclusive start of the window, RFC 3339 in UTC.
 	From time.Time `json:"from" example:"2026-11-03T09:30:00Z"`
 	// To is the exclusive end of the window, RFC 3339 in UTC.

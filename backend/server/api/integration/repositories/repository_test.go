@@ -72,15 +72,10 @@ func codeRepo(t *testing.T, db rowsReader, source string) *Code {
 func repoCalls(t *testing.T) []repoCall {
 	t.Helper()
 	const email, fromDay, toDay = "abc@arbisoft.com", "2026-11-03", "2026-11-10"
-	activity := func(db rowsReader) *Activity { return mustRepo(t, NewActivity, db) }
 	jira := func(db rowsReader) *Issues { return issuesRepo(t, db, SourceJira) }
 	github := func(db rowsReader) *Code { return codeRepo(t, db, SourceGitHub) }
 	ai := func(db rowsReader) *AI { return mustRepo(t, NewAI, db) }
 	return []repoCall{
-		{"FirstActivity", func(db rowsReader) errors.Error {
-			_, err := activity(db).FirstActivity(email, "jira:%", "github:%")
-			return err
-		}, "read the engineer's first activity"},
 		{"Assigned", func(db rowsReader) errors.Error { _, err := jira(db).Assigned(email, repoFrom, repoTo); return err }, "read jira issues assigned"},
 		{"Created", func(db rowsReader) errors.Error { _, err := jira(db).Created(email, repoFrom, repoTo); return err }, "read jira issues created"},
 		{"ResolvedByType", func(db rowsReader) errors.Error {
@@ -128,10 +123,9 @@ func anyAll(db *dalmocks.Dal, err errors.Error) {
 
 func TestRepositoryConstructorsRejectNil(t *testing.T) {
 	tests := map[string]func() errors.Error{
-		"activity": func() errors.Error { _, err := NewActivity(nil); return err },
-		"issues":   func() errors.Error { _, err := NewIssues(nil, SourceJira); return err },
-		"code":     func() errors.Error { _, err := NewCode(nil, SourceGitHub); return err },
-		"ai":       func() errors.Error { _, err := NewAI(nil); return err },
+		"issues": func() errors.Error { _, err := NewIssues(nil, SourceJira); return err },
+		"code":   func() errors.Error { _, err := NewCode(nil, SourceGitHub); return err },
+		"ai":     func() errors.Error { _, err := NewAI(nil); return err },
 	}
 	for name, newRepo := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -175,9 +169,6 @@ func TestRepositoryWithNoRowsReturnsZeros(t *testing.T) {
 	}
 	if got, _ := mustRepo(t, NewAI, db).TotalCost("abc@arbisoft.com", "2026-11-03", "2026-11-10"); got != "" {
 		t.Errorf("TotalCost() = %q, want empty", got)
-	}
-	if got, _ := mustRepo(t, NewActivity, db).FirstActivity("abc@arbisoft.com", "jira:%", "github:%"); got != nil {
-		t.Errorf("FirstActivity() = %v, want nil", got)
 	}
 }
 

@@ -74,22 +74,18 @@ func (tf TimeFrame) Window(now time.Time) (from, to time.Time) {
 // that includes February 29 is 366 days long, and the Integration Service's own 1y windows must pass.
 const MaxRange = 366 * 24 * time.Hour
 
-// Period is what the caller asked for: a time frame counted back from now, an explicit range, or everything since the
-// engineer joined. Exactly one of the three must be given.
+// Period is what the caller asked for: a time frame counted back from now, or an explicit range. Exactly one of the two
+// must be given.
 type Period struct {
 	TimeFrame string
-	// Since is "joining" to start at the engineer's first activity. StatsService resolves it, because it needs the database.
-	Since string
-	From  string
-	To    string
+	From      string
+	To        string
 }
 
 // Resolve returns the half-open window [from, to) in UTC and the time frame text (empty for a range). Errors are BadInput.
 func (p Period) Resolve(now time.Time) (from, to time.Time, timeFrame string, err errors.Error) {
 	hasRange := p.From != "" || p.To != ""
 	switch {
-	case p.Since != "":
-		return time.Time{}, time.Time{}, "", errors.BadInput.New("since is resolved by the stats service, not by the period")
 	case p.TimeFrame != "" && hasRange:
 		return time.Time{}, time.Time{}, "", errors.BadInput.New("give either tf or from and to, not both")
 	case p.TimeFrame != "":

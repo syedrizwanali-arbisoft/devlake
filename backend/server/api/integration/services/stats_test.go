@@ -39,7 +39,6 @@ type call struct {
 // fakeRepos implements every repository interface with canned answers, records each call, and fails the method
 // named in failOn.
 type fakeRepos struct {
-	joined       *time.Time
 	assigned     repositories.AssignedCounts
 	created      int64
 	byType       []repositories.IssueTypeRow
@@ -61,7 +60,6 @@ type fakeRepos struct {
 }
 
 var (
-	_ activityReader            = (*fakeRepos)(nil)
 	_ ticketStatsReader         = (*fakeRepos)(nil)
 	_ versionControlStatsReader = (*fakeRepos)(nil)
 	_ aiReader                  = (*fakeRepos)(nil)
@@ -76,10 +74,6 @@ func (f *fakeRepos) record(method, email string, args ...interface{}) errors.Err
 		return errRepo
 	}
 	return nil
-}
-
-func (f *fakeRepos) FirstActivity(email, issueIDLike, codeIDLike string) (*time.Time, errors.Error) {
-	return f.joined, f.record("FirstActivity", email, issueIDLike, codeIDLike)
 }
 
 func (f *fakeRepos) Assigned(email string, from, to time.Time) (repositories.AssignedCounts, errors.Error) {
@@ -148,7 +142,7 @@ func (f *fakeRepos) MonthlyCosts(email, fromDay, toDay string) ([]repositories.A
 
 func newService(t *testing.T, repos *fakeRepos) *StatsService {
 	t.Helper()
-	s, err := NewStatsService(repos, repos, repos, repos, WithClock(func() time.Time { return fixedNow }))
+	s, err := NewStatsService(repos, repos, repos, WithClock(func() time.Time { return fixedNow }))
 	if err != nil {
 		t.Fatalf("NewStatsService() error = %v", err)
 	}
@@ -159,21 +153,19 @@ func TestNewStatsServiceRejectsNilDependencies(t *testing.T) {
 	f := &fakeRepos{}
 	tests := []struct {
 		name                string
-		activity            activityReader
 		ticketStats         ticketStatsReader
 		versionControlStats versionControlStatsReader
 		ai                  aiReader
 		opts                []Option
 	}{
-		{name: "nil activity", ticketStats: f, versionControlStats: f, ai: f},
-		{name: "nil ticket stats", activity: f, versionControlStats: f, ai: f},
-		{name: "nil version control stats", activity: f, ticketStats: f, ai: f},
-		{name: "nil ai", activity: f, ticketStats: f, versionControlStats: f},
-		{name: "nil clock", activity: f, ticketStats: f, versionControlStats: f, ai: f, opts: []Option{WithClock(nil)}},
+		{name: "nil ticket stats", versionControlStats: f, ai: f},
+		{name: "nil version control stats", ticketStats: f, ai: f},
+		{name: "nil ai", ticketStats: f, versionControlStats: f},
+		{name: "nil clock", ticketStats: f, versionControlStats: f, ai: f, opts: []Option{WithClock(nil)}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := NewStatsService(tc.activity, tc.ticketStats, tc.versionControlStats, tc.ai, tc.opts...); err == nil {
+			if _, err := NewStatsService(tc.ticketStats, tc.versionControlStats, tc.ai, tc.opts...); err == nil {
 				t.Error("NewStatsService() = nil error, want error")
 			}
 		})
@@ -200,9 +192,6 @@ func TestStatsServiceValidatesInputBeforeReading(t *testing.T) {
 		{"empty email", "", "email", utils.Period{TimeFrame: "1d"}},
 		{"bad tf", "abc@arbisoft.com", "tf", utils.Period{TimeFrame: "1D"}},
 		{"missing period", "abc@arbisoft.com", "tf", utils.Period{}},
-		{"unknown since", "abc@arbisoft.com", "since", utils.Period{Since: "start"}},
-		{"since with tf", "abc@arbisoft.com", "since", utils.Period{Since: "joining", TimeFrame: "1y"}},
-		{"since with range", "abc@arbisoft.com", "since", utils.Period{Since: "joining", From: "2026-11-01T00:00:00Z", To: "2026-11-08T00:00:00Z"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,7 +235,6 @@ func TestStatsServicePassesTheLowercasedEmailAndWindow(t *testing.T) {
 func TestStatsServiceReturnsRepositoryErrorsUnchanged(t *testing.T) {
 	tests := []struct{ stats, failOn string }{
 		{"Jira", "Assigned"}, {"Jira", "Created"}, {"Jira", "ResolvedByType"}, {"Jira", "ResolvedByTeam"},
-		{"Jira", "FirstActivity"},
 		{"GitHub", "Commits"}, {"GitHub", "Authored"}, {"GitHub", "PullRequestsWithCommits"}, {"GitHub", "Reviews"},
 		{"GitHub", "CommitsByGroup"}, {"GitHub", "PullRequestsByGroup"},
 		{"AIUsage", "Providers"}, {"AIUsage", "ToolDecisions"}, {"AIUsage", "Monthly"},
@@ -254,11 +242,7 @@ func TestStatsServiceReturnsRepositoryErrorsUnchanged(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.stats+"/"+tc.failOn, func(t *testing.T) {
-			p := utils.Period{TimeFrame: "1d"}
-			if tc.failOn == "FirstActivity" {
-				p = utils.Period{Since: sinceJoining}
-			}
-			err := statsCalls(newService(t, &fakeRepos{failOn: tc.failOn}), "abc@arbisoft.com", p)[tc.stats]()
+			err := statsCalls(newService(t, &fakeRepos{failOn: tc.failOn}), "abc@arbisoft.com", utils.Period{TimeFrame: "1d"})[tc.stats]()
 			if err != errRepo {
 				t.Errorf("%s() error = %v, want the repository error %v", tc.stats, err, errRepo)
 			}
@@ -504,35 +488,5 @@ func TestStatsWithNoDataAreZeroAndNeverNull(t *testing.T) {
 	cost, err := s.AICost("abc@arbisoft.com", utils.Period{TimeFrame: "24h"})
 	if err != nil || cost.Models == nil || cost.Monthly == nil || cost.TotalEstimatedCostUSD != zeroCost {
 		t.Errorf("AICost() = %+v, %v; want empty lists and a zero total", cost, err)
-	}
-}
-
-func TestSinceJoiningStartsAtTheFirstActivity(t *testing.T) {
-	joined := time.Date(2025, 3, 4, 9, 0, 0, 0, time.UTC)
-	repos := &fakeRepos{joined: &joined}
-
-	got, err := newService(t, repos).Jira("ABC@arbisoft.com", utils.Period{Since: "joining"})
-	if err != nil {
-		t.Fatalf("Jira() error = %v", err)
-	}
-	if got.Since != "joining" || got.TimeFrame != "" || !got.From.Equal(joined) || !got.To.Equal(fixedNow) {
-		t.Errorf("window = %+v, want joining %v .. %v", got.StatsWindow, joined, fixedNow)
-	}
-	// The window is longer than a year, which only since=joining may do.
-	if got.To.Sub(got.From) <= utils.MaxRange {
-		t.Errorf("window = %v, want longer than the explicit range limit", got.To.Sub(got.From))
-	}
-	if repos.calls[0].method != "FirstActivity" || repos.calls[0].email != "abc@arbisoft.com" {
-		t.Errorf("first call = %+v, want FirstActivity for the lowercased email", repos.calls[0])
-	}
-}
-
-func TestSinceJoiningWithoutActivityIsAnEmptyWindow(t *testing.T) {
-	got, err := newService(t, &fakeRepos{}).AICost("abc@arbisoft.com", utils.Period{Since: "joining"})
-	if err != nil {
-		t.Fatalf("AICost() error = %v", err)
-	}
-	if !got.From.Equal(fixedNow) || !got.To.Equal(fixedNow) || got.TotalEstimatedCostUSD != zeroCost {
-		t.Errorf("AICost() = %+v, want an empty window at now and zero cost", got)
 	}
 }

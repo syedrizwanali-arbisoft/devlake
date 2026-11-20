@@ -20,7 +20,6 @@ package repositories
 import (
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/apache/incubator-devlake/core/dal"
 	"github.com/apache/incubator-devlake/core/errors"
@@ -54,60 +53,6 @@ func idLike(source string) (string, errors.Error) {
 
 // The repositories match emails case-insensitively and expect them lowercased, because the stored emails are not.
 // Every window is half-open, [from, to). The AI ones are ranges of whole days.
-
-// Activity reads when an engineer was first active. It is safe for concurrent use.
-type Activity struct {
-	db rowsReader
-}
-
-// NewActivity returns a repository that reads through db, which must not be nil.
-func NewActivity(db rowsReader) (*Activity, errors.Error) {
-	if db == nil {
-		return nil, errors.Default.New("activity repository: nil db")
-	}
-	return &Activity{db: db}, nil
-}
-
-// FirstActivity returns the earliest issue, code or AI activity recorded for email, or nil when there is none.
-// issueIDLike and codeIDLike are the LIKE patterns for the domain ids of the issue tracker and the code host,
-// for example "jira:%" and "github:%".
-func (r *Activity) FirstActivity(email, issueIDLike, codeIDLike string) (*time.Time, errors.Error) {
-	var rows []struct{ Joined *time.Time }
-	if err := r.db.All(&rows,
-		dal.Select("MIN(activity) AS joined"),
-		dal.From(`(
-			SELECT CAST(i.created_date AS DATETIME) AS activity FROM issues i JOIN accounts a ON a.id = i.creator_id
-				WHERE i.id LIKE ?
-					AND LOWER(a.email) = ?
-			UNION ALL SELECT CAST(i.created_date AS DATETIME) FROM issues i JOIN accounts a ON a.id = i.assignee_id
-				WHERE i.id LIKE ?
-					AND LOWER(a.email) = ?
-			UNION ALL SELECT CAST(c.authored_date AS DATETIME) FROM commits c
-				WHERE LOWER(c.author_email) = ?
-					AND EXISTS (SELECT 1
-						FROM repo_commits rc
-						WHERE rc.commit_sha = c.sha
-							AND rc.repo_id LIKE ?)
-			UNION ALL SELECT CAST(p.created_date AS DATETIME)
-				FROM pull_requests p
-				JOIN accounts a ON a.id = p.author_id
-				WHERE p.id LIKE ?
-					AND LOWER(a.email) = ?
-			UNION ALL SELECT CAST(date AS DATETIME)
-				FROM ai_activities
-				WHERE LOWER(user_email) = ?
-			UNION ALL SELECT CAST(date AS DATETIME)
-				FROM ai_model_usages
-				WHERE LOWER(user_email) = ?
-		) activities`, issueIDLike, email, issueIDLike, email, email, codeIDLike, codeIDLike, email, email, email),
-	); err != nil {
-		return nil, errors.Default.Wrap(err, "read the engineer's first activity")
-	}
-	if len(rows) == 0 {
-		return nil, nil
-	}
-	return rows[0].Joined, nil
-}
 
 // singleRow returns the single row an aggregate query reads, or the zero value when it read none.
 func singleRow[T any](rows []T) T {

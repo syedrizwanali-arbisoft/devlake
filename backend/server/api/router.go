@@ -130,10 +130,6 @@ func RegisterRouter(r *gin.Engine, basicRes context.BasicRes) {
 // registerIntegrationRoutes is the composition root for the Integration Service endpoints.
 func registerIntegrationRoutes(r *gin.Engine, basicRes context.BasicRes) {
 	db := basicRes.GetDal()
-	activity, err := statsrepositories.NewActivity(db)
-	if err != nil {
-		panic(err)
-	}
 	jira, err := statsrepositories.NewIssues(db, statsrepositories.SourceJira)
 	if err != nil {
 		panic(err)
@@ -146,7 +142,7 @@ func registerIntegrationRoutes(r *gin.Engine, basicRes context.BasicRes) {
 	if err != nil {
 		panic(err)
 	}
-	stats, err := statsservices.NewStatsService(activity, jira, github, ai)
+	stats, err := statsservices.NewStatsService(jira, github, ai)
 	if err != nil {
 		panic(err)
 	}
